@@ -29,7 +29,7 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         layout.addWidget(splitter, 1)
 
-        self.tree = PagesTree(self.store)
+        self.tree = self._create_pages_tree()
         self.tree.export_selected.connect(self.on_export_selected)
         splitter.addWidget(self.tree)
 
@@ -37,7 +37,7 @@ class MainWindow(QMainWindow):
         right_layout = QVBoxLayout(right)
         splitter.addWidget(right)
 
-        self.editor = EditorHost()
+        self.editor = self._create_editor()
         self.editor.set_store_setter(self.store.set)
         right_layout.addWidget(self.editor, 3)
 
@@ -57,6 +57,12 @@ class MainWindow(QMainWindow):
         bar_lay.addStretch(1)
         bar_lay.addWidget(self.btn_save)
         self.btn_save.clicked.connect(self.save_all)
+    
+    def _create_pages_tree(self) -> PagesTree:
+        return PagesTree(self.store)
+
+    def _create_editor(self) -> EditorHost:
+        return EditorHost()
 
     def closeEvent(self, event):
         if not (hasattr(self.store, "has_unsaved") and self.store.has_unsaved()):
