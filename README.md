@@ -1,6 +1,6 @@
 # schema-cms
 
-An extensible CMS/editor for working with structured JS objects.
+> An extensible CMS/editor for working with structured JS objects.
 
 ## Quick start
 
