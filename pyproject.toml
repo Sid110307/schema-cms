@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "schema-cms"
+version = "1.0.0"
+description = "Schema CMS"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6",
+    "tree_sitter",
+    "tree_sitter_javascript",
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["schema_cms*"]
+
+[tool.setuptools.package-data]
+schema_cms = ["ui/icons/*.svg"]
