@@ -29,7 +29,7 @@ class PagesTree(QTreeWidget):
                     if export_name not in available:
                         available[export_name] = f
 
-            for export_name in sorted(available.keys()):
+            for export_name in available.keys():
                 f = available[export_name]
                 label = ext.get_export_label(export_name)
                 it = QTreeWidgetItem([label])

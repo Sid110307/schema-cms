@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, QUrl, Qt, Signal
+from PySide6.QtCore import QRectF, QTimer, QUrl, Qt, Signal
 from PySide6.QtGui import QPainter, QPainterPath, QPixmap
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
@@ -64,15 +64,16 @@ class ImagePreview(QLabel):
         # TODO: Cache downloaded images
         if js_path.lower().startswith(("http://", "https://")):
             self.setText("Loading...")
-            if self._reply:
+            if self._reply is not None:
                 self._reply.abort()
                 self._reply.deleteLater()
                 self._reply = None
 
             req = QNetworkRequest(QUrl(js_path))
             req.setHeader(QNetworkRequest.KnownHeaders.UserAgentHeader, "SchemaCMS/1.0")
-            self._reply = self._nam.get(req)
-            self._reply.finished.connect(lambda: self._on_image_downloaded(js_path))
+            reply = self._nam.get(req)
+            self._reply = reply
+            reply.finished.connect(lambda r=reply, p=js_path: self._on_image_downloaded(r, p))
 
             return
 
@@ -106,19 +107,22 @@ class ImagePreview(QLabel):
         self.clear()
         self.setPixmap(rounded)
 
-    def _on_image_downloaded(self, js_path):
-        if not self._reply:
+    def _on_image_downloaded(self, reply, js_path):
+        if reply is None:
+            return
+        if self._reply is not reply:
+            reply.deleteLater()
             return
 
-        data = self._reply.readAll()
-        self._reply.deleteLater()
+        data = reply.readAll()
+        reply.deleteLater()
         self._reply = None
 
         if self._last_js_path != js_path:
             return
 
         pix = QPixmap()
-        if not pix.loadFromData(data.data()):
+        if not pix.loadFromData(bytes(data)):
             self.clear_preview("Invalid image")
             return
 
@@ -127,7 +131,7 @@ class ImagePreview(QLabel):
     def resizeEvent(self, e):
         super().resizeEvent(e)
         if self._last_js_path:
-            self.set_js_path(self._last_js_path)
+            QTimer.singleShot(0, lambda: self.set_js_path(self._last_js_path))
 
 
 class ImagePicker(QWidget):
