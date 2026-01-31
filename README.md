@@ -316,3 +316,7 @@ The `kind` property defines which editor to use for an export.
 If no `kind` is specified, the editor falls back to default behavior based on the value type.
 
 If a custom editor is registered for a specific `kind`, it will take priority.
+
+## License
+
+> [MIT](https://opensource.org/licenses/MIT)
