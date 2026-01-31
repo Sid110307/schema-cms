@@ -36,7 +36,7 @@ def pick_images(parent, title):
 
 
 class ImagePreview(QLabel):
-    def __init__(self, radius=12, min_size=(128, 128), parent=None):
+    def __init__(self, radius=12, parent=None):
         super().__init__(parent)
 
         self._radius = radius
@@ -52,9 +52,10 @@ class ImagePreview(QLabel):
         disk.setMaximumCacheSize(64 * 1024 * 1024)
         self._nam.setCache(disk)
 
+        self.setContentsMargins(0, 0, 0, 0)
         self.setObjectName("accent")
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setMinimumSize(*min_size)
+        self.setMinimumSize(128, 128)
         self.setText("No image")
 
     def clear_preview(self, text="No image"):
@@ -176,7 +177,7 @@ class ImagePicker(QWidget):
     def __init__(self, value="", radius=12):
         super().__init__()
 
-        self.btn = icon_button("edit", tooltip = "Pick image")
+        self.btn = icon_button("edit", text = "Browse", tooltip = "Pick image")
         self.edit = QLineEdit("" if value is None else str(value))
         self.preview = ImagePreview(radius = radius)
 
@@ -277,7 +278,7 @@ class MediaListEditor(QWidget):
 
         right.addWidget(QLabel("Preview"))
 
-        self.image_preview = ImagePreview(radius = 12, min_size = (300, 300))
+        self.image_preview = ImagePreview()
         self.image_preview.clear_preview("Select an item to preview")
 
         self.video_preview = VideoWidget()
@@ -288,6 +289,8 @@ class MediaListEditor(QWidget):
 
         right.addWidget(self.image_preview, 1)
         right.addWidget(self.video_preview, 1)
+        right.setStretchFactor(self.image_preview, 1)
+        right.setStretchFactor(self.video_preview, 1)
 
         self.media_player = QMediaPlayer(self)
         self.audio_output = QAudioOutput(self)

@@ -57,14 +57,14 @@ def svg_icon(name, size, widget=None):
     return icon
 
 
-def icon_button(name, *, tooltip="", size=(34, 30)):
+def icon_button(name, *, text="", tooltip="", size=(34, 30)):
     pad = (16, 8) if name == "delete" else (12, 4)
     icon_size = (size[0] - pad[0], size[1] - pad[1])
 
     btn = QPushButton()
     btn.setIcon(svg_icon(name, icon_size))
     btn.setIconSize(QSize(icon_size[0], icon_size[1]))
-    btn.setText(f" {name.capitalize()}")
+    btn.setText(f" {text or name.capitalize()}")
     btn.setMinimumWidth(size[0])
     btn.setFixedHeight(size[1])
     btn.setToolTip(tooltip)

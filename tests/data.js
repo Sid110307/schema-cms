@@ -92,7 +92,7 @@ export const siteConfig = {
         subtext: "An extensible CMS/editor for working with structured JS objects.",
         ctaText: "Get Started",
         ctaLink: "https://example.com",
-        banner: "https://picsum.photos/id/1043/1600/900.jpg",
+        banner: "https://picsum.photos/id/1003/1600/600.jpg",
     },
     footer: {
         copyright: "© 2026 Schema CMS. All rights reserved.",
