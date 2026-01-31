@@ -210,6 +210,8 @@ The `kind` property defines which editor to use for an export.
 > This is a sample document.
 > `;
 > ```
+>
+> ![Document](./screenshots/document.png)
 
 - `collection`: A list of items with a defined `item_schema`.
 
@@ -245,6 +247,8 @@ The `kind` property defines which editor to use for an export.
 > ];
 > ```
 >
+> ![Collection](./screenshots/collection.png)
+>
 > If no `item_schema` is provided, the types will be inferred from the items.
 
 - `asset_collection`: A list of media assets (images/videos).
@@ -266,6 +270,8 @@ The `kind` property defines which editor to use for an export.
 >     "/media/cool_video.mp4",
 > ];
 > ```
+>
+> ![Asset Collection](./screenshots/media.png)
 
 - `graph`: A nested structure of dicts/lists with defined `field_schemas` and/or `item_schema`.
 
@@ -304,6 +310,8 @@ The `kind` property defines which editor to use for an export.
 >     ],
 > };
 > ```
+>
+> ![Graph](./screenshots/graph.png)
 
 If no `kind` is specified, the editor falls back to default behavior based on the value type.
 
