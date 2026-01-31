@@ -1,10 +1,5 @@
 from .. import ext
 
-SCHEMAS = {}
-OBJECT_SCHEMAS = {}
-
-ext._seed_defaults(SCHEMAS, OBJECT_SCHEMAS)
-
 
 def schema_for(export_name, value):
     schema = ext.get_schemas().get(export_name)

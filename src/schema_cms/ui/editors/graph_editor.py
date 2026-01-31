@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMes
 
 from .dict_editor import DictEditor
 from .markdown_editor import MarkdownEditor
-from .media_list_editor import ImagePicker
+from .media_list_editor import IMAGE_EXTS, ImagePicker, VIDEO_EXTS
 from .table_editor import TableEditor, pretty_label
 from ..icons import icon_button
 from ...config import get_js_image_prefix
@@ -51,8 +51,17 @@ def _normalized_prefix():
 
 
 def _is_media_path(s):
+    if not isinstance(s, str):
+        return False
     prefix = _normalized_prefix()
-    return isinstance(s, str) and bool(prefix) and s.startswith(prefix)
+
+    if prefix and s.startswith(prefix):
+        return True
+    if s.lower().startswith(("http://", "https://")) and any(
+            s.lower().endswith(ext) for ext in IMAGE_EXTS + VIDEO_EXTS):
+        return True
+
+    return False
 
 
 def _get_at(root, path):

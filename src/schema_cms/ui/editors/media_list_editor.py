@@ -1,9 +1,10 @@
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtCore import QRectF, QUrl, Qt, Signal
 from PySide6.QtGui import QPainter, QPainterPath, QPixmap
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
+from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox, \
     QVBoxLayout, QWidget
 
@@ -40,10 +41,13 @@ class ImagePreview(QLabel):
 
         self._radius = radius
         self._last_js_path: str | None = None
+        self._nam = QNetworkAccessManager(self)
+        self._reply = None
 
         self.setObjectName("accent")
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setMinimumSize(*min_size)
+        self.setText("No image")
 
     def clear_preview(self, text="No image"):
         self._last_js_path = None
@@ -57,21 +61,35 @@ class ImagePreview(QLabel):
             self.clear_preview("No image")
             return
 
+        # TODO: Cache downloaded images
+        if js_path.lower().startswith(("http://", "https://")):
+            self.setText("Loading...")
+            if self._reply:
+                self._reply.abort()
+                self._reply.deleteLater()
+                self._reply = None
+
+            req = QNetworkRequest(QUrl(js_path))
+            req.setHeader(QNetworkRequest.KnownHeaders.UserAgentHeader, "SchemaCMS/1.0")
+            self._reply = self._nam.get(req)
+            self._reply.finished.connect(lambda: self._on_image_downloaded(js_path))
+
+            return
+
         local = js_to_local_path(js_path)
         if not local or not local.exists():
             self.clear_preview("Not found")
             return
 
         pix = QPixmap(str(local))
+        self._set_pixmap(pix)
+
+    def _set_pixmap(self, pix: QPixmap):
         if pix.isNull():
             self.clear_preview("Invalid image")
             return
 
-        scaled = pix.scaled(
-            self.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
+        scaled = pix.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
 
         rounded = QPixmap(scaled.size())
         rounded.fill(Qt.GlobalColor.transparent)
@@ -87,6 +105,24 @@ class ImagePreview(QLabel):
 
         self.clear()
         self.setPixmap(rounded)
+
+    def _on_image_downloaded(self, js_path):
+        if not self._reply:
+            return
+
+        data = self._reply.readAll()
+        self._reply.deleteLater()
+        self._reply = None
+
+        if self._last_js_path != js_path:
+            return
+
+        pix = QPixmap()
+        if not pix.loadFromData(data.data()):
+            self.clear_preview("Invalid image")
+            return
+
+        self._set_pixmap(pix)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -206,8 +242,7 @@ class MediaListEditor(QWidget):
 
         self.video_preview = VideoWidget()
         self.video_preview.setMinimumHeight(300)
-        self.video_preview.setAspectRatioMode(
-            Qt.AspectRatioMode.KeepAspectRatio)
+        self.video_preview.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
         self.video_preview.hide()
         self.video_preview.clicked.connect(self._toggle_video)
 
@@ -236,8 +271,7 @@ class MediaListEditor(QWidget):
             self.list.setCurrentRow(0)
 
     def _sync_from_list(self):
-        self.value[:] = [self.list.item(i).data(
-            Qt.ItemDataRole.UserRole) for i in range(self.list.count())]
+        self.value[:] = [self.list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.list.count())]
         self.value_changed.emit(self.value)
 
     def _render_preview(self, item, _):
@@ -255,6 +289,26 @@ class MediaListEditor(QWidget):
             return
 
         js_path = item.data(Qt.ItemDataRole.UserRole)
+        if js_path.lower().startswith(("http://", "https://")):
+            suffix = Path(js_path.split("?")[0]).suffix.lower()
+            self.path_label.setText(js_path)
+
+            if suffix in VIDEO_EXTS:
+                self.image_preview.hide()
+                self.video_preview.show()
+                self.media_player.setSource(QUrl(js_path))
+                self.media_player.setLoops(QMediaPlayer.Loops.Infinite)
+                self.media_player.play()
+
+                return
+
+            if suffix in IMAGE_EXTS:
+                self.image_preview.set_js_path(js_path)
+                return
+
+            self.image_preview.clear_preview("Preview not available")
+            return
+
         local = js_to_local_path(js_path)
         self.path_label.setText(str(local) if local else js_path)
 
@@ -267,7 +321,7 @@ class MediaListEditor(QWidget):
         elif local.suffix.lower() in VIDEO_EXTS:
             self.image_preview.hide()
             self.video_preview.show()
-            self.media_player.setSource(local.as_uri())
+            self.media_player.setSource(QUrl.fromLocalFile(str(local)))
             self.media_player.setLoops(QMediaPlayer.Loops.Infinite)
             self.media_player.play()
 
@@ -325,8 +379,7 @@ class MediaListEditor(QWidget):
         if row < 0 or row >= self.list.count() - 1:
             return
 
-        self.value[row + 1], self.value[row] = self.value[row +
-                                                          1], self.value[row]
+        self.value[row + 1], self.value[row] = self.value[row + 1], self.value[row]
         item = self.list.takeItem(row)
         self.list.insertItem(row + 1, item)
         self.list.setCurrentRow(row + 1)

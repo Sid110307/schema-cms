@@ -57,7 +57,7 @@ class MainWindow(QMainWindow):
         bar_lay.addStretch(1)
         bar_lay.addWidget(self.btn_save)
         self.btn_save.clicked.connect(self.save_all)
-    
+
     def _create_pages_tree(self) -> PagesTree:
         return PagesTree(self.store)
 

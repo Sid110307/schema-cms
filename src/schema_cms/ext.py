@@ -12,17 +12,6 @@ _EDITORS: Dict[str, EditorFactory] = {}
 _EXPORT_LABEL_RESOLVER: LabelResolver | None = None
 
 
-def _seed_defaults(schemas: Dict[str, SchemaDict], object_schemas: Dict[str, SchemaDict]) -> None:
-    if not _SCHEMAS:
-        for name, schema in schemas.items():
-            _SCHEMAS[name] = dict(schema) if isinstance(
-                schema, dict) else schema
-    if not _OBJECT_SCHEMAS:
-        for name, schema in object_schemas.items():
-            _OBJECT_SCHEMAS[name] = dict(
-                schema) if isinstance(schema, dict) else schema
-
-
 def register_schema(name: str, schema: SchemaDict) -> None:
     _SCHEMAS[name] = dict(schema)
 
