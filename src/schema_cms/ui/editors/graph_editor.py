@@ -57,9 +57,9 @@ def _is_media_path(s):
 
     if prefix and s.startswith(prefix):
         return True
-    if s.lower().startswith(("http://", "https://")) and any(
-            s.lower().endswith(ext) for ext in IMAGE_EXTS + VIDEO_EXTS):
-        return True
+    if s.lower().startswith(("http://", "https://")):
+        base = s.split("?", 1)[0].split("#", 1)[0]
+        return any(base.lower().endswith(ext) for ext in (IMAGE_EXTS | VIDEO_EXTS))
 
     return False
 

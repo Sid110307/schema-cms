@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, QTimer, QUrl, Qt, Signal
+from PySide6.QtCore import QRectF, QStandardPaths, QUrl, Qt, Signal
 from PySide6.QtGui import QPainter, QPainterPath, QPixmap
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
-from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
+from PySide6.QtNetwork import QNetworkAccessManager, QNetworkDiskCache, QNetworkRequest
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox, \
     QVBoxLayout, QWidget
 
@@ -43,6 +43,14 @@ class ImagePreview(QLabel):
         self._last_js_path: str | None = None
         self._nam = QNetworkAccessManager(self)
         self._reply = None
+        self._source_pix: QPixmap | None = None
+        self._cache: dict[str, QPixmap] = {}
+
+        disk = QNetworkDiskCache(self)
+        disk.setCacheDirectory(str((Path(
+            QStandardPaths.writableLocation(QStandardPaths.StandardLocation.CacheLocation)) / "schema-cms").resolve()))
+        disk.setMaximumCacheSize(64 * 1024 * 1024)
+        self._nam.setCache(disk)
 
         self.setObjectName("accent")
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -51,23 +59,33 @@ class ImagePreview(QLabel):
 
     def clear_preview(self, text="No image"):
         self._last_js_path = None
+        self._source_pix = None
         self.setText(text)
         self.setPixmap(QPixmap())
 
     def set_js_path(self, js_path: str | None):
+        if self._last_js_path == js_path and self._source_pix and not self._source_pix.isNull():
+            self._render_from_source()
+            return
         self._last_js_path = js_path
 
         if not js_path:
             self.clear_preview("No image")
             return
 
-        # TODO: Cache downloaded images
+        if js_path in self._cache:
+            self._source_pix = self._cache[js_path]
+            self._render_from_source()
+            return
+
         if js_path.lower().startswith(("http://", "https://")):
             self.setText("Loading...")
             if self._reply is not None:
-                self._reply.abort()
-                self._reply.deleteLater()
+                old = self._reply
                 self._reply = None
+
+                old.abort()
+                old.deleteLater()
 
             req = QNetworkRequest(QUrl(js_path))
             req.setHeader(QNetworkRequest.KnownHeaders.UserAgentHeader, "SchemaCMS/1.0")
@@ -83,29 +101,39 @@ class ImagePreview(QLabel):
             return
 
         pix = QPixmap(str(local))
-        self._set_pixmap(pix)
+        self._source_pix = pix
+        self._render_from_source()
 
     def _set_pixmap(self, pix: QPixmap):
         if pix.isNull():
             self.clear_preview("Invalid image")
             return
 
-        scaled = pix.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        dpr = self.devicePixelRatioF()
+        target = self.size() * dpr
+        scaled = pix.scaled(target, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
 
         rounded = QPixmap(scaled.size())
+        rounded.setDevicePixelRatio(dpr)
         rounded.fill(Qt.GlobalColor.transparent)
 
         painter = QPainter(rounded)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         path = QPainterPath()
-        path.addRoundedRect(QRectF(scaled.rect()), self._radius, self._radius)
+        path.addRoundedRect(QRectF(0, 0, scaled.width(), scaled.height()), self._radius * dpr, self._radius * dpr)
         painter.setClipPath(path)
         painter.drawPixmap(0, 0, scaled)
         painter.end()
 
         self.clear()
         self.setPixmap(rounded)
+
+    def _render_from_source(self):
+        if not self._source_pix or self._source_pix.isNull():
+            self.clear_preview("Invalid image")
+            return
+        self._set_pixmap(self._source_pix)
 
     def _on_image_downloaded(self, reply, js_path):
         if reply is None:
@@ -114,24 +142,32 @@ class ImagePreview(QLabel):
             reply.deleteLater()
             return
 
-        data = reply.readAll()
-        reply.deleteLater()
         self._reply = None
+        if reply.error() != reply.NetworkError.NoError:
+            reply.deleteLater()
+            if self._last_js_path == js_path:
+                self.clear_preview("Failed to load image")
+            return
 
+        if not reply.isOpen():
+            reply.deleteLater()
+            if self._last_js_path == js_path:
+                self.clear_preview("Failed to load image")
+            return
+
+        data = bytes(reply.readAll())
+        reply.deleteLater()
         if self._last_js_path != js_path:
             return
 
         pix = QPixmap()
-        if not pix.loadFromData(bytes(data)):
+        if not pix.loadFromData(data):
             self.clear_preview("Invalid image")
             return
 
-        self._set_pixmap(pix)
-
-    def resizeEvent(self, e):
-        super().resizeEvent(e)
-        if self._last_js_path:
-            QTimer.singleShot(0, lambda: self.set_js_path(self._last_js_path))
+        self._source_pix = pix
+        self._cache[js_path] = pix
+        self._render_from_source()
 
 
 class ImagePicker(QWidget):
@@ -294,7 +330,7 @@ class MediaListEditor(QWidget):
 
         js_path = item.data(Qt.ItemDataRole.UserRole)
         if js_path.lower().startswith(("http://", "https://")):
-            suffix = Path(js_path.split("?")[0]).suffix.lower()
+            suffix = Path(js_path.split("?", 1)[0].split("#", 1)[0]).suffix.lower()
             self.path_label.setText(js_path)
 
             if suffix in VIDEO_EXTS:
@@ -339,6 +375,10 @@ class MediaListEditor(QWidget):
         super().resizeEvent(e)
         if item := self.list.currentItem():
             self._render_preview(item, None)
+
+    def hideEvent(self, e):
+        super().hideEvent(e)
+        self.media_player.stop()
 
     def add_media(self):
         js_paths, bad = pick_images(self, "Add media")
