@@ -23,7 +23,7 @@ class _FieldRow(QWidget):
 
         self.val_edit = QLineEdit("" if value is None else str(value))
         self.val_edit.setPlaceholderText("Value")
-        self.btn_del = icon_button("delete", tooltip = "Delete this field")
+        self.btn_del = icon_button("delete", tooltip="Delete this field")
 
         lay.addWidget(self.key_edit, 2)
         lay.addWidget(self.sep)
@@ -33,7 +33,7 @@ class _FieldRow(QWidget):
         self.key_edit.textEdited.connect(self.changed)
         self.val_edit.textEdited.connect(self.changed)
         self.btn_del.clicked.connect(
-            lambda: self.delete_requested.emit(self._orig_key))
+            lambda: self.delete_requested.emit(self.key_edit.text().strip()))
 
     def get_key(self):
         return self.key_edit.text().strip()
@@ -59,7 +59,7 @@ class DictEditor(QWidget):
         top = QHBoxLayout()
         top.setSpacing(6)
 
-        self.btn_add = icon_button("add", tooltip = "Add a new field")
+        self.btn_add = icon_button("add", tooltip="Add a new field")
         title = QLabel("Fields")
 
         top.addWidget(title)
@@ -98,7 +98,7 @@ class DictEditor(QWidget):
         self._clear_rows()
         for k, v in self.value.items():
             row = _FieldRow(str(k), "" if v is None else str(v))
-            row.delete_requested.connect(self._delete_by_orig_key)
+            row.delete_requested.connect(self._delete_by_key)
             row.changed.connect(self._schedule_apply)
             self.rows_layout.insertWidget(self.rows_layout.count() - 1, row)
 
@@ -110,21 +110,21 @@ class DictEditor(QWidget):
 
         k = k.strip()
         if k in self.value:
-            QMessageBox.warning(self, "Already exists", "Field already exists.")
+            QMessageBox.warning(self, "Already exists",
+                                "Field already exists.")
             return
 
         self.value[k] = ""
         self._populate()
         self.value_changed.emit(self.value)
 
-    def _delete_by_orig_key(self, orig_key):
-        if orig_key not in self.value:
-            self.apply()
+    def _delete_by_key(self, key):
+        if key not in self.value:
             return
-        if QMessageBox.question(self, "Delete", f"Delete \"{orig_key}\"?") != QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(self, "Delete", f"Delete \"{key}\"?") != QMessageBox.StandardButton.Yes:
             return
 
-        self.value.pop(orig_key, None)
+        self.value.pop(key, None)
         self._populate()
         self.value_changed.emit(self.value)
 

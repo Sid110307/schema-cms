@@ -2,7 +2,7 @@ import re
 from dataclasses import dataclass
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt, Signal
-from PySide6.QtGui import QPainterPath, QRegion
+from PySide6.QtGui import QBitmap, QPainter, QRegion
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLineEdit, QMessageBox, \
     QPlainTextEdit, QTableView, QVBoxLayout, QWidget
 
@@ -178,11 +178,17 @@ class TableView(QTableView):
     def _update_mask(self):
         vp = self.viewport()
         r = vp.rect()
+        if r.isEmpty():
+            return
 
-        path = QPainterPath()
-        path.addRoundedRect(r, self._radius, self._radius)
-
-        vp.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        bm = QBitmap(r.size())
+        bm.fill(Qt.GlobalColor.color0)
+        p = QPainter(bm)
+        p.setBrush(Qt.GlobalColor.color1)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawRoundedRect(r, self._radius, self._radius)
+        p.end()
+        vp.setMask(QRegion(bm))
 
 
 class RecordDialog(QDialog):
@@ -230,7 +236,7 @@ class RecordDialog(QDialog):
             if hasattr(w, "value"):
                 v = w.value()
             elif isinstance(w, QPlainTextEdit):
-                v = w.toPlainText().strip()
+                v = w.toPlainText()
             else:
                 v = w.text().strip()
 
@@ -383,7 +389,7 @@ class TableEditor(QWidget):
         self.btn_edit.setEnabled(has_sel)
         self.btn_del.setEnabled(has_sel)
 
-        if not has_sel:
+        if not has_sel or self.search.text().strip() != "":
             self.btn_up.setEnabled(False)
             self.btn_dn.setEnabled(False)
 

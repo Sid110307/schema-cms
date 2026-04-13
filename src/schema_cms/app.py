@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -17,6 +18,7 @@ def _resolve_data_entries_dir(value):
 
 
 def main(argv=None, data_entries_dir=None, window_factory=None):
+    os.environ.setdefault("QT_LOGGING_RULES", "qt.multimedia.*=false;qt.ffmpeg.*=false")
     args = list(sys.argv if argv is None else argv)
 
     app = QApplication(args)

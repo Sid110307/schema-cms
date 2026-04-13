@@ -2,7 +2,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QInputDialog, QLineEdit, QListWidget, QListWidgetItem, QMessageBox, \
     QVBoxLayout, QWidget
 
-from .graph_editor import summarize
+from ...core.js_exports import summarize
 from ..icons import icon_button
 
 
@@ -74,7 +74,7 @@ class ListEditor(QWidget):
                         it.flags() | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
                 else:
                     it.setFlags(
-                        it.flags() | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+                        it.flags() & ~(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled))
 
                 self.list.addItem(it)
 

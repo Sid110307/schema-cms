@@ -7,12 +7,12 @@ from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMes
     QVBoxLayout, QWidget
 
 from .dict_editor import DictEditor
+from .list_editor import ListEditor
 from .markdown_editor import MarkdownEditor
 from .media_list_editor import IMAGE_EXTS, ImagePicker, VIDEO_EXTS
 from .table_editor import TableEditor, pretty_label
 from ..icons import icon_button
-from ...config import get_js_image_prefix
-from ...core.js_exports import JSTemplate
+from ...core.js_exports import JSTemplate, _normalized_prefix, summarize
 
 Key = Union[str, int]
 
@@ -20,34 +20,6 @@ Key = Union[str, int]
 @dataclass(frozen = True)
 class NodeRef:
     path: Tuple[Key, ...]
-
-
-def summarize(v):
-    if isinstance(v, JSTemplate):
-        v = v.text
-    if isinstance(v, dict):
-        n = len(v)
-        return f"{n} field{'' if n == 1 else 's'}"
-    if isinstance(v, list):
-        n = len(v)
-        return "Empty list" if n == 0 else f"{n} item{'' if n == 1 else 's'}"
-    if v is None:
-        return "Blank"
-    if isinstance(v, str):
-        s = v.replace("\n", " ").strip()
-        return (s[:60] + "...") if len(s) > 60 else s
-    return str(v)
-
-
-def _normalized_prefix():
-    prefix = (get_js_image_prefix() or "").strip()
-    if not prefix:
-        return ""
-    if not prefix.startswith("/"):
-        prefix = "/" + prefix
-    if not prefix.endswith("/"):
-        prefix += "/"
-    return prefix
 
 
 def _is_media_path(s):
@@ -310,24 +282,15 @@ class GraphEditor(QWidget):
 
         if isinstance(val, list):
             if val and all(isinstance(x, dict) for x in val):
-                schema_name = None
-                if path and isinstance(path[-1], str):
-                    schema_name = self._field_schemas.get(path[-1])
-                if not schema_name:
-                    schema_name = self._item_schema
-
-                obj_schema = self._object_schemas.get(
-                    schema_name or "") if schema_name else None
-                ed = TableEditor(val, object_schema = obj_schema,
-                                 title_field = "title")
+                schema_name = self._field_schemas.get(path[-1]) if path and isinstance(path[-1], str) else None
+                schema_name = schema_name or self._item_schema
+                obj_schema = self._object_schemas.get(schema_name or "") if schema_name else None
+                ed = TableEditor(val, object_schema=obj_schema, title_field="title")
                 ed.value_changed.connect(lambda _v: self._commit())
                 return ed
 
-            ed = QLabel("Select an item to preview")
-            ed.setObjectName("accent")
-            ed.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            ed.setMinimumHeight(200)
-
+            ed = ListEditor(val)
+            ed.value_changed.connect(lambda _v: self._commit())
             return ed
 
         if isinstance(val, dict):

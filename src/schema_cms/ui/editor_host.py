@@ -71,7 +71,11 @@ class EditorHost(QWidget):
         if kind == "document":
             if isinstance(value, JSTemplate):
                 ed = MarkdownEditor(value.text)
+                self._clear_editor()
+                self._editor = ed
+                self.root_layout.addWidget(ed, 1)
                 ed.value_changed.connect(lambda t: self._commit(JSTemplate(t)))
+                return
             else:
                 ed = MarkdownEditor(value if isinstance(
                     value, str) else str(value))
@@ -81,13 +85,12 @@ class EditorHost(QWidget):
             rows = value if isinstance(value, list) else []
             obj_schema = object_schemas.get(item_schema or "")
             ed = TableEditor(rows, object_schema = obj_schema, title_field = title_field,
-                             reverse = reverse if isinstance(reverse, bool) else False)
+                            reverse = reverse if isinstance(reverse, bool) else False)
         elif kind == "graph":
             ed = GraphEditor(value if isinstance(value, (dict, list)) else {}, title_field,
-                             object_schemas = object_schemas, item_schema = s.get(
-                    "item_schema"),
-                             field_schemas = s.get("field_schemas"))
-            ed.value_changed.connect(self._commit)
+                            object_schemas = object_schemas,
+                            item_schema = s.get("item_schema"),
+                            field_schemas = s.get("field_schemas"))
         elif isinstance(value, str):
             ed = MarkdownEditor(value)
         elif isinstance(value, (dict, list)):

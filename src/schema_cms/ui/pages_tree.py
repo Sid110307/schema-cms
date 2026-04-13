@@ -21,22 +21,20 @@ class PagesTree(QTreeWidget):
     def refresh(self):
         with QSignalBlocker(self):
             self.clear()
-            available = {}
 
             for f in self.store.list_files():
-                exports = self.store.load_file(f)
-                for export_name in exports.keys():
-                    if export_name not in available:
-                        available[export_name] = f
+                try:
+                    exports = self.store.load_file(f)
+                except Exception:
+                    continue
 
-            for export_name in available.keys():
-                f = available[export_name]
-                label = ext.get_export_label(export_name)
-                it = QTreeWidgetItem([label])
-                it.setSizeHint(0, QSize(0, 24))
-                it.setData(0, Qt.ItemDataRole.UserRole,
-                           ExportRef(f, export_name))
-                self.addTopLevelItem(it)
+                for export_name in exports.keys():
+                    label = ext.get_export_label(export_name)
+                    it = QTreeWidgetItem([label])
+                    it.setSizeHint(0, QSize(0, 24))
+                    it.setData(0, Qt.ItemDataRole.UserRole,
+                            ExportRef(f, export_name))
+                    self.addTopLevelItem(it)
 
     def _on_select(self):
         items = self.selectedItems()

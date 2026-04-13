@@ -1,13 +1,9 @@
-import os
-
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QMessageBox, QPushButton, QSplitter, QVBoxLayout, QWidget
 
 from .editor_host import EditorHost
 from .pages_tree import PagesTree
 from ..config import get_app_title
-
-os.environ["QT_LOGGING_RULES"] = "qt.multimedia.*=false;qt.ffmpeg.*=false"
 
 
 class MainWindow(QMainWindow):
@@ -80,9 +76,13 @@ class MainWindow(QMainWindow):
         )
 
         if res == QMessageBox.StandardButton.Save:
-            self.store.save_all()
-            event.accept()
-
+            try:
+                self.store.save_all()
+                event.accept()
+            except Exception as exc:
+                QMessageBox.critical(self, "Save failed",
+                                    f"Could not save changes:\n{exc}")
+                event.ignore()
             return
 
         if res == QMessageBox.StandardButton.Discard:

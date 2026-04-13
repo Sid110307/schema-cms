@@ -14,12 +14,13 @@ from ...core.js_exports import js_to_local_path, local_to_js_path
 
 IMAGE_EXTS = {".webp", ".png", ".jpg", ".jpeg"}
 VIDEO_EXTS = {".mp4", ".mov", ".m4v"}
+_ALL_MEDIA_EXTS = sorted(IMAGE_EXTS | VIDEO_EXTS)
 
 
 def pick_images(parent, title):
     start_dir = get_public_images_dir().resolve()
-    files, _ = QFileDialog.getOpenFileNames(parent, title, str(start_dir),
-                                            f"Media (*{' *'.join(IMAGE_EXTS | VIDEO_EXTS)})")
+    filter_str = "Media (" + " ".join(f"*{ext}" for ext in _ALL_MEDIA_EXTS) + ")"
+    files, _ = QFileDialog.getOpenFileNames(parent, title, str(start_dir), filter_str)
     if not files:
         return [], []
 
@@ -89,10 +90,12 @@ class ImagePreview(QLabel):
                 old.deleteLater()
 
             req = QNetworkRequest(QUrl(js_path))
-            req.setHeader(QNetworkRequest.KnownHeaders.UserAgentHeader, "SchemaCMS/1.0")
+            req.setHeader(
+                QNetworkRequest.KnownHeaders.UserAgentHeader, "SchemaCMS/1.0")
             reply = self._nam.get(req)
             self._reply = reply
-            reply.finished.connect(lambda r=reply, p=js_path: self._on_image_downloaded(r, p))
+            reply.finished.connect(
+                lambda r=reply, p=js_path: self._on_image_downloaded(r, p))
 
             return
 
@@ -110,19 +113,24 @@ class ImagePreview(QLabel):
             self.clear_preview("Invalid image")
             return
 
-        dpr = self.devicePixelRatioF()
-        target = self.size() * dpr
-        scaled = pix.scaled(target, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        target = self.size()
+        if target.width() <= 0 or target.height() <= 0:
+            return
+
+        scaled = pix.scaled(
+            target,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
 
         rounded = QPixmap(scaled.size())
-        rounded.setDevicePixelRatio(dpr)
         rounded.fill(Qt.GlobalColor.transparent)
 
         painter = QPainter(rounded)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         path = QPainterPath()
-        path.addRoundedRect(QRectF(0, 0, scaled.width(), scaled.height()), self._radius * dpr, self._radius * dpr)
+        path.addRoundedRect(QRectF(rounded.rect()), self._radius, self._radius)
         painter.setClipPath(path)
         painter.drawPixmap(0, 0, scaled)
         painter.end()
@@ -177,9 +185,9 @@ class ImagePicker(QWidget):
     def __init__(self, value="", radius=12):
         super().__init__()
 
-        self.btn = icon_button("edit", text = "Browse", tooltip = "Pick image")
+        self.btn = icon_button("edit", text="Browse", tooltip="Pick image")
         self.edit = QLineEdit("" if value is None else str(value))
-        self.preview = ImagePreview(radius = radius)
+        self.preview = ImagePreview(radius=radius)
 
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
@@ -255,10 +263,10 @@ class MediaListEditor(QWidget):
         btns = QHBoxLayout()
         btns.setSpacing(6)
 
-        self.btn_add = icon_button("add", tooltip = "Add media")
-        self.btn_del = icon_button("delete", tooltip = "Delete selected media")
-        self.btn_up = icon_button("up", tooltip = "Move selected media up")
-        self.btn_dn = icon_button("down", tooltip = "Move selected media down")
+        self.btn_add = icon_button("add", tooltip="Add media")
+        self.btn_del = icon_button("delete", tooltip="Delete selected media")
+        self.btn_up = icon_button("up", tooltip="Move selected media up")
+        self.btn_dn = icon_button("down", tooltip="Move selected media down")
 
         btns.addWidget(self.btn_add)
         btns.addWidget(self.btn_del)
@@ -283,7 +291,8 @@ class MediaListEditor(QWidget):
 
         self.video_preview = VideoWidget()
         self.video_preview.setMinimumHeight(300)
-        self.video_preview.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+        self.video_preview.setAspectRatioMode(
+            Qt.AspectRatioMode.KeepAspectRatio)
         self.video_preview.hide()
         self.video_preview.clicked.connect(self._toggle_video)
 
@@ -314,7 +323,8 @@ class MediaListEditor(QWidget):
             self.list.setCurrentRow(0)
 
     def _sync_from_list(self):
-        self.value[:] = [self.list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.list.count())]
+        self.value[:] = [self.list.item(i).data(
+            Qt.ItemDataRole.UserRole) for i in range(self.list.count())]
         self.value_changed.emit(self.value)
 
     def _render_preview(self, item, _):
@@ -333,7 +343,8 @@ class MediaListEditor(QWidget):
 
         js_path = item.data(Qt.ItemDataRole.UserRole)
         if js_path.lower().startswith(("http://", "https://")):
-            suffix = Path(js_path.split("?", 1)[0].split("#", 1)[0]).suffix.lower()
+            suffix = Path(js_path.split("?", 1)[
+                          0].split("#", 1)[0]).suffix.lower()
             self.path_label.setText(js_path)
 
             if suffix in VIDEO_EXTS:
@@ -426,7 +437,7 @@ class MediaListEditor(QWidget):
         if row < 0 or row >= self.list.count() - 1:
             return
 
-        self.value[row + 1], self.value[row] = self.value[row + 1], self.value[row]
+        self.value[row], self.value[row + 1] = self.value[row + 1], self.value[row]
         item = self.list.takeItem(row)
         self.list.insertItem(row + 1, item)
         self.list.setCurrentRow(row + 1)

@@ -1,4 +1,5 @@
 import json
+import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +11,23 @@ from ..config import get_js_image_prefix, get_public_images_dir
 
 _parser = Parser(Language(language()))
 _JS_IDENT = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*$")
+
+
+def summarize(v):
+    if isinstance(v, JSTemplate):
+        v = v.text
+    if isinstance(v, dict):
+        n = len(v)
+        return f"{n} field{'' if n == 1 else 's'}"
+    if isinstance(v, list):
+        n = len(v)
+        return "Empty list" if n == 0 else f"{n} item{'' if n == 1 else 's'}"
+    if v is None:
+        return "Blank"
+    if isinstance(v, str):
+        s = v.replace("\n", " ").strip()
+        return (s[:60] + "...") if len(s) > 60 else s
+    return str(v)
 
 
 def _normalized_prefix():
@@ -42,14 +60,14 @@ def local_to_js_path(local_path):
     return prefix + rel.as_posix()
 
 
-@dataclass(frozen = True)
+@dataclass(frozen=True)
 class ExportSpan:
     name: str
     init_start: int
     init_end: int
 
 
-@dataclass(frozen = True)
+@dataclass(frozen=True)
 class JSTemplate:
     text: str
 
@@ -58,13 +76,10 @@ def _node_text(src, n):
     return src[n.start_byte:n.end_byte].decode("utf-8")
 
 
-def find_export_nodes(js_text):
+def _iter_export_declarators(js_text):
     src = js_text.encode("utf-8")
     tree = _parser.parse(src)
-    root = tree.root_node
-
-    out = []
-    stack = [root]
+    stack = [tree.root_node]
 
     while stack:
         n = stack.pop()
@@ -90,9 +105,31 @@ def find_export_nodes(js_text):
                         value_node = ch
 
                 if name_node is not None and value_node is not None:
-                    out.append((_node_text(src, name_node), value_node))
+                    yield name_node, value_node, src
 
-    return out
+
+def find_export_nodes(js_text):
+    return [
+        (_node_text(src, name_node), value_node)
+        for name_node, value_node, src in _iter_export_declarators(js_text)
+    ]
+
+
+def find_export_spans(js_text):
+    return [
+        ExportSpan(name = _node_text(src, name_node), init_start = value_node.start_byte, init_end = value_node.end_byte)
+        for name_node, value_node, src in _iter_export_declarators(js_text)
+    ]
+
+
+def parse_exports(js_text):
+    exports = {}
+    spans = []
+    for name_node, value_node, src in _iter_export_declarators(js_text):
+        name = _node_text(src, name_node)
+        exports[name] = _node_to_py(src, value_node)
+        spans.append(ExportSpan(name = name, init_start = value_node.start_byte, init_end = value_node.end_byte))
+    return exports, spans
 
 
 def _unquote_js_str(s):
@@ -103,21 +140,37 @@ def _unquote_js_str(s):
     q = s[0]
     if q not in ("'", '"') or s[-1] != q:
         return s
-
     body = s[1:-1]
-    body = body.replace("\\\\", "\\")
-    if q == "'":
-        body = body.replace("\\'", "'")
-    else:
-        body = body.replace('\\"', '"')
 
-    body = body.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r")
-    body = re.sub(r"\\u\{([0-9a-fA-F]+)}",
-                  lambda m: chr(int(m.group(1), 16)), body)
-    body = re.sub(r"\\u([0-9a-fA-F]{4})",
-                  lambda m: chr(int(m.group(1), 16)), body)
+    def _replace(m):
+        esc = m.group(1)
+        if esc == '\\':
+            return '\\'
+        if esc == 'n':
+            return '\n'
+        if esc == 't':
+            return '\t'
+        if esc == 'r':
+            return '\r'
+        if esc == "'":
+            return "'"
+        if esc == '"':
+            return '"'
+        if esc == '0':
+            return '\0'
+        if esc.startswith('u{'):
+            return chr(int(esc[2:-1], 16))
+        if esc.startswith('u') and len(esc) == 5:
+            return chr(int(esc[1:], 16))
+        if esc.startswith('x') and len(esc) == 3:
+            return chr(int(esc[1:], 16))
+        return esc
 
-    return body
+    return re.sub(
+        r'\\(\\|n|t|r|\'|"|0|u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|.)',
+        _replace,
+        body
+    )
 
 
 def _node_to_py(src, n):
@@ -131,7 +184,16 @@ def _node_to_py(src, n):
         return _unquote_js_str(s)
     if t == "number":
         try:
-            return float(s) if any(c in s for c in ".eE") else int(s, 10)
+            if any(c in s for c in ".eE"):
+                return float(s)
+            sl = s.lower()
+            if sl.startswith("0x"):
+                return int(s, 16)
+            if sl.startswith("0b"):
+                return int(s, 2)
+            if sl.startswith("0o"):
+                return int(s, 8)
+            return int(s, 10)
         except Exception:
             return s
     if t == "true":
@@ -151,7 +213,13 @@ def _node_to_py(src, n):
                 arg = ch
 
         v = _node_to_py(src, arg) if arg else s
-        return -v if op == "-" and isinstance(v, (int, float)) else s
+        if op == "-" and isinstance(v, (int, float)):
+            return -v
+        if op == "+" and isinstance(v, (int, float)):
+            return +v
+        if op == "!" and isinstance(v, bool):
+            return not v
+        return s
     if t in ("array", "array_expression"):
         return [_node_to_py(src, ch) for ch in n.named_children]
     if t in ("object", "object_expression"):
@@ -178,83 +246,6 @@ def _node_to_py(src, n):
     return s
 
 
-def find_export_spans(js_text):
-    src = js_text.encode("utf-8")
-    tree = _parser.parse(src)
-    root = tree.root_node
-
-    spans = []
-    stack = [root]
-
-    while stack:
-        n = stack.pop()
-        for ch in reversed(n.named_children):
-            stack.append(ch)
-        if n.type != "export_statement":
-            continue
-
-        for c in n.named_children:
-            if c.type != "lexical_declaration":
-                continue
-            for d in c.named_children:
-                if d.type != "variable_declarator":
-                    continue
-
-                name_node = None
-                value_node = None
-                for ch in d.named_children:
-                    if ch.type == "identifier" and name_node is None:
-                        name_node = ch
-                    elif value_node is None:
-                        value_node = ch
-
-                if name_node and value_node:
-                    spans.append(ExportSpan(name = _node_text(src, name_node), init_start = value_node.start_byte,
-                                            init_end = value_node.end_byte))
-
-    return spans
-
-
-def parse_exports(js_text):
-    src = js_text.encode("utf-8")
-    tree = _parser.parse(src)
-    root = tree.root_node
-
-    exports = {}
-    spans = []
-    stack = [root]
-
-    while stack:
-        n = stack.pop()
-        for ch in reversed(n.named_children):
-            stack.append(ch)
-        if n.type != "export_statement":
-            continue
-
-        for c in n.named_children:
-            if c.type != "lexical_declaration":
-                continue
-            for d in c.named_children:
-                if d.type != "variable_declarator":
-                    continue
-
-                name_node = None
-                value_node = None
-                for ch in d.named_children:
-                    if ch.type == "identifier" and name_node is None:
-                        name_node = ch
-                    elif value_node is None:
-                        value_node = ch
-
-                if name_node and value_node:
-                    name = _node_text(src, name_node)
-                    exports[name] = _node_to_py(src, value_node)
-                    spans.append(
-                        ExportSpan(name = name, init_start = value_node.start_byte, init_end = value_node.end_byte))
-
-    return exports, spans
-
-
 def _js_str(s):
     return json.dumps(s, ensure_ascii = False)
 
@@ -269,9 +260,14 @@ def _to_js(v, indent=0):
     if v is False:
         return "false"
     if isinstance(v, JSTemplate):
-        body = v.text.replace("\\", "\\\\").replace("`", "\\`")
+        body = v.text.replace("`", "\\`")
         return f"`{body}`"
     if isinstance(v, (int, float)):
+        if isinstance(v, float):
+            if math.isnan(v):
+                return "NaN"
+            if math.isinf(v):
+                return "Infinity" if v > 0 else "-Infinity"
         return str(v)
     if isinstance(v, str):
         return _js_str(v)

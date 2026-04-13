@@ -67,6 +67,12 @@ class DataStore:
         old = exports.get(ref.export_name)
         if isinstance(old, JSTemplate) and isinstance(value, str):
             value = JSTemplate(value)
+
+        if isinstance(value, (list, dict)):
+            exports[ref.export_name] = value
+            blob.dirty_exports.add(ref.export_name)
+            return
+
         if old == value:
             return
 
