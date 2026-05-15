@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Tuple, Union
 
@@ -28,7 +29,7 @@ def _is_media_path(s):
     prefix = _normalized_prefix()
 
     if prefix and s.startswith(prefix):
-        return True
+        return Path(s.split("?")[0]).suffix.lower() in (IMAGE_EXTS | VIDEO_EXTS)
     if s.lower().startswith(("http://", "https://")):
         base = s.split("?", 1)[0].split("#", 1)[0]
         return any(base.lower().endswith(ext) for ext in (IMAGE_EXTS | VIDEO_EXTS))
@@ -39,7 +40,10 @@ def _is_media_path(s):
 def _get_at(root, path):
     cur = root
     for p in path:
-        cur = cur[p]
+        try:
+            cur = cur[p]
+        except (KeyError, IndexError, TypeError):
+            raise LookupError(f"Path {'/'.join(str(x) for x in path)} not found") from None
     return cur
 
 

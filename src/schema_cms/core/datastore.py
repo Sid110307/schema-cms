@@ -58,6 +58,8 @@ class DataStore:
 
     def get(self, ref):
         blob = self._ensure_loaded(ref.file_path)
+        if ref.export_name not in blob.exports:
+            raise KeyError(f"Export \"{ref.export_name}\" not found in {ref.file_path}")
         return blob.exports[ref.export_name]
 
     def set(self, ref, value):

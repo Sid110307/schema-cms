@@ -20,8 +20,9 @@ def test_round_trip_template():
 
 
 def test_escape_backslash_n():
-    result = _unquote_js_str(r'"hello\\nworld"')
-    assert result == "hello\\nworld"
+    src = 'export const x = "hello\\\\nworld";'
+    exports, _ = parse_exports(src)
+    assert exports["x"] == "hello\\nworld"
 
 
 def test_hex_number():

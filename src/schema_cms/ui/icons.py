@@ -16,6 +16,9 @@ ICON_MAP = {
 _ICON_CACHE = {}
 
 
+def invalidate_icon_cache():
+    _ICON_CACHE.clear()
+
 def _resolve_color(role, widget=None):
     try:
         pal = widget.palette() if widget is not None else QApplication.palette()

@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication, QStyleFactory
 from .config import get_app_title, get_data_entries_dir
 from .core.datastore import DataStore
 from .ui.main_window import MainWindow
+from .ui.icons import invalidate_icon_cache
 from .ui.theme import apply_palette, apply_stylesheet
 
 
@@ -26,7 +27,7 @@ def main(argv=None, data_entries_dir=None, window_factory=None):
 
     apply_palette(app)
     apply_stylesheet(app)
-    QGuiApplication.styleHints().colorSchemeChanged.connect(lambda _: apply_palette(app))
+    QGuiApplication.styleHints().colorSchemeChanged.connect(lambda _: (apply_palette(app), invalidate_icon_cache()))
 
     store = DataStore(_resolve_data_entries_dir(data_entries_dir))
     w = MainWindow(store, title = get_app_title()) if window_factory is None else window_factory(store,

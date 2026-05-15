@@ -222,7 +222,7 @@ class RecordDialog(QDialog):
                 w.setText("" if v is None else str(v))
 
             self._widgets[f.name] = w
-            form.addRow(f.name, w)
+            form.addRow(pretty_label(f.name), w)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)

@@ -33,7 +33,7 @@ class _FieldRow(QWidget):
         self.key_edit.textEdited.connect(self.changed)
         self.val_edit.textEdited.connect(self.changed)
         self.btn_del.clicked.connect(
-            lambda: self.delete_requested.emit(self.key_edit.text().strip()))
+            lambda: self.delete_requested.emit(self._orig_key))
 
     def get_key(self):
         return self.key_edit.text().strip()
