@@ -3,6 +3,15 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEd
     QVBoxLayout, QWidget
 
 from ..icons import icon_button
+from ...core.js_exports import JSRaw, JSTemplate
+
+
+def _display_value(value):
+    if value is None:
+        return ""
+    if isinstance(value, (JSRaw, JSTemplate)):
+        return value.text
+    return str(value)
 
 
 class _FieldRow(QWidget):
@@ -17,11 +26,12 @@ class _FieldRow(QWidget):
         lay.setSpacing(8)
 
         self._orig_key = key
+        self._initial_text = _display_value(value)
         self.key_edit = QLineEdit(key)
         self.key_edit.setPlaceholderText("Field name")
         self.sep = QLabel(":")
 
-        self.val_edit = QLineEdit("" if value is None else str(value))
+        self.val_edit = QLineEdit(self._initial_text)
         self.val_edit.setPlaceholderText("Value")
         self.btn_del = icon_button("delete", tooltip="Delete this field")
 
@@ -37,6 +47,9 @@ class _FieldRow(QWidget):
 
     def get_key(self):
         return self.key_edit.text().strip()
+
+    def get_orig_key(self):
+        return self._orig_key
 
     def get_value(self):
         return self.val_edit.text()
@@ -97,7 +110,7 @@ class DictEditor(QWidget):
     def _populate(self):
         self._clear_rows()
         for k, v in self.value.items():
-            row = _FieldRow(str(k), "" if v is None else str(v))
+            row = _FieldRow(str(k), v)
             row.delete_requested.connect(self._delete_by_key)
             row.changed.connect(self._schedule_apply)
             self.rows_layout.insertWidget(self.rows_layout.count() - 1, row)
@@ -131,9 +144,16 @@ class DictEditor(QWidget):
     def _schedule_apply(self):
         self._apply_timer.start(200)
 
+    def flush_pending(self):
+        if self._apply_timer.isActive():
+            self._apply_timer.stop()
+            return self.apply()
+        return False
+
     def apply(self):
         new = {}
         seen = set()
+        committed_rows = []
 
         for i in range(self.rows_layout.count() - 1):
             w = self.rows_layout.itemAt(i).widget()
@@ -148,11 +168,40 @@ class DictEditor(QWidget):
             if k in seen:
                 QMessageBox.warning(self, "Duplicate field",
                                     f"Field \"{k}\" is already set. Please use a different name.")
-                return
+                return False
 
             seen.add(k)
-            new[k] = v
+            original = self.value.get(w.get_orig_key())
+            if v == w._initial_text:
+                new[k] = original
+            elif isinstance(original, JSRaw):
+                new[k] = JSRaw(v)
+            elif isinstance(original, JSTemplate):
+                new[k] = JSTemplate(v)
+            elif isinstance(original, bool) and v.strip().lower() in ("true", "false"):
+                new[k] = v.strip().lower() == "true"
+            elif isinstance(original, int) and not isinstance(original, bool):
+                try:
+                    new[k] = int(v)
+                except ValueError:
+                    new[k] = v
+            elif isinstance(original, float):
+                try:
+                    new[k] = float(v)
+                except ValueError:
+                    new[k] = v
+            elif original is None and not v.strip():
+                new[k] = None
+            else:
+                new[k] = v
+            committed_rows.append((w, k))
 
+        if new == self.value:
+            return False
         self.value.clear()
         self.value.update(new)
+        for row, key in committed_rows:
+            row.set_orig_key(key)
+            row._initial_text = _display_value(new[key])
         self.value_changed.emit(self.value)
+        return True

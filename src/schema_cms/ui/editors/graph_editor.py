@@ -3,8 +3,8 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Tuple, Union
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMessageBox, QTreeWidget, QTreeWidgetItem, \
+from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMessageBox, QPushButton, QTreeWidget, QTreeWidgetItem, \
     QVBoxLayout, QWidget
 
 from .dict_editor import DictEditor
@@ -13,7 +13,7 @@ from .markdown_editor import MarkdownEditor
 from .media_list_editor import IMAGE_EXTS, ImagePicker, VIDEO_EXTS
 from .table_editor import TableEditor, pretty_label
 from ..icons import icon_button
-from ...core.js_exports import JSTemplate, _normalized_prefix, summarize
+from ...core.js_exports import JSRaw, JSTemplate, _normalized_prefix, summarize
 
 Key = Union[str, int]
 
@@ -67,6 +67,7 @@ def _del_at(root, path):
 
 class GraphEditor(QWidget):
     value_changed = Signal(object)
+    move_requested = Signal(object, int)
     _ADD_CHOICES = [
         "Text",
         "Number",
@@ -80,6 +81,7 @@ class GraphEditor(QWidget):
         self.value = value
         self._current_path = tuple()
         self._sub = None
+        self._sub_path = None
         self._title = title
         self._seen = set()
 
@@ -109,11 +111,14 @@ class GraphEditor(QWidget):
 
         self.btn_add = icon_button("add", tooltip = "Add something here")
         self.btn_del = icon_button("delete", tooltip = "Delete selected item")
+        self.btn_move = QPushButton("Move to…")
+        self.btn_move.setToolTip("Move selected entry to another page or group")
         self.btn_up = icon_button("up", tooltip = "Move selected item up")
         self.btn_dn = icon_button("down", tooltip = "Move selected item down")
 
         btns.addWidget(self.btn_add)
         btns.addWidget(self.btn_del)
+        btns.addWidget(self.btn_move)
         btns.addStretch(1)
         btns.addWidget(self.btn_up)
         btns.addWidget(self.btn_dn)
@@ -121,6 +126,7 @@ class GraphEditor(QWidget):
 
         self.btn_add.clicked.connect(self._add_child)
         self.btn_del.clicked.connect(self._delete_node)
+        self.btn_move.clicked.connect(self._move_to_page)
         self.btn_up.clicked.connect(lambda: self._move(-1))
         self.btn_dn.clicked.connect(lambda: self._move(+1))
 
@@ -213,10 +219,30 @@ class GraphEditor(QWidget):
         return None
 
     def _clear_sub(self):
-        if self._sub is not None:
-            self.sub_layout.removeWidget(self._sub)
-            self._sub.deleteLater()
-            self._sub = None
+        if self._sub is None:
+            return False
+
+        self.flush_pending()
+        structure_changed = False
+        if isinstance(self._sub, DictEditor) and self._sub_path is not None:
+            item = self._find_item_by_path(self._sub_path)
+            value = self.value if not self._sub_path else _get_at(self.value, self._sub_path)
+            keys = [item.child(i).data(0, Qt.ItemDataRole.UserRole).path[-1]
+                    for i in range(item.childCount())] if item else []
+            structure_changed = item is None or keys != list(value)
+
+        self.sub_layout.removeWidget(self._sub)
+        self._sub.deleteLater()
+        self._sub = None
+        self._sub_path = None
+        return structure_changed
+
+    def flush_pending(self):
+        if self._sub is not None and hasattr(self._sub, "flush_pending"):
+            with QSignalBlocker(self._sub):
+                changed = self._sub.flush_pending()
+            if changed:
+                self.value_changed.emit(self.value)
 
     def _on_select(self):
         items = self.tree.selectedItems()
@@ -228,6 +254,15 @@ class GraphEditor(QWidget):
             return
 
         path = ref.path
+        if self._clear_sub():
+            try:
+                _get_at(self.value, path)
+            except LookupError:
+                path = path[:-1]
+            self._current_path = path
+            self._rebuild_tree()
+            return
+
         self._current_path = path
         val = self.value if not path else _get_at(self.value, path)
 
@@ -245,15 +280,15 @@ class GraphEditor(QWidget):
         elif isinstance(val, list):
             self.node_meta.setText(
                 f"{len(val)} item{'' if len(val) == 1 else 's'}")
-        elif isinstance(val, str | JSTemplate):
+        elif isinstance(val, (str, JSRaw, JSTemplate)):
             self.node_meta.setText("Text")
         elif isinstance(val, (int, float)):
             self.node_meta.setText("Number")
         else:
             self.node_meta.setText("Value")
 
-        self._clear_sub()
         self._sub = self._make_editor_for(val, path)
+        self._sub_path = path
         self.sub_layout.addWidget(self._sub, 1)
         self._update_action_states()
 
@@ -263,6 +298,7 @@ class GraphEditor(QWidget):
         enable_move = False
         can_up = False
         can_dn = False
+        can_move_page = False
 
         if self._current_path:
             parent_path = self._current_path[:-1]
@@ -274,9 +310,17 @@ class GraphEditor(QWidget):
                     enable_move = True
                     can_up = last > 0
                     can_dn = last < (len(parent) - 1)
+                    key = parent_path[-1] if parent_path else None
+                    schema_name = self._field_schemas.get(key) or self._item_schema
+                    can_move_page = bool(schema_name) and isinstance(parent[last], dict)
 
         self.btn_up.setEnabled(enable_move and can_up)
         self.btn_dn.setEnabled(enable_move and can_dn)
+        self.btn_move.setEnabled(can_move_page)
+
+    def _move_to_page(self):
+        if self.btn_move.isEnabled():
+            self.move_requested.emit(self._current_path[:-1], self._current_path[-1])
 
     def _make_editor_for(self, val, path):
         if _is_media_path(val):
@@ -285,12 +329,14 @@ class GraphEditor(QWidget):
             return ed
 
         if isinstance(val, list):
-            if val and all(isinstance(x, dict) for x in val):
-                schema_name = self._field_schemas.get(path[-1]) if path and isinstance(path[-1], str) else None
-                schema_name = schema_name or self._item_schema
+            schema_name = self._field_schemas.get(path[-1]) if path and isinstance(path[-1], str) else None
+            schema_name = schema_name or self._item_schema
+            if (val and all(isinstance(x, dict) for x in val)) or (not val and schema_name):
                 obj_schema = self._object_schemas.get(schema_name or "") if schema_name else None
-                ed = TableEditor(val, object_schema=obj_schema, title_field="title")
+                ed = TableEditor(val, object_schema=obj_schema, title_field="title",
+                                 move_enabled=bool(schema_name))
                 ed.value_changed.connect(lambda _v: self._commit())
+                ed.move_requested.connect(lambda row, p=path: self.move_requested.emit(p, row))
                 return ed
 
             ed = ListEditor(val)
@@ -298,9 +344,9 @@ class GraphEditor(QWidget):
             return ed
 
         if isinstance(val, dict):
-            if all(isinstance(vv, (str, JSTemplate, int, float, bool)) or vv is None for vv in val.values()):
+            if all(isinstance(vv, (str, JSRaw, JSTemplate, int, float, bool)) or vv is None for vv in val.values()):
                 ed = DictEditor(val)
-                ed.value_changed.connect(lambda _v: self._commit())
+                ed.value_changed.connect(lambda _v, p=path: self._on_dict_changed(p))
                 return ed
 
             ed = QLabel("Select an item to preview")
@@ -308,6 +354,11 @@ class GraphEditor(QWidget):
             ed.setAlignment(Qt.AlignmentFlag.AlignCenter)
             ed.setMinimumHeight(200)
 
+            return ed
+
+        if isinstance(val, JSRaw):
+            ed = MarkdownEditor(val.text)
+            ed.value_changed.connect(lambda t: self._set_leaf(path, JSRaw(t)))
             return ed
 
         if isinstance(val, JSTemplate):
@@ -328,6 +379,20 @@ class GraphEditor(QWidget):
             lambda t: self._set_leaf(path, self._coerce_scalar(t)))
 
         return ed
+
+    def _on_dict_changed(self, path):
+        value = self.value if not path else _get_at(self.value, path)
+        item = self._find_item_by_path(path)
+        children = [item.child(i) for i in range(item.childCount())] if item else []
+        keys = [child.data(0, Qt.ItemDataRole.UserRole).path[-1] for child in children]
+        if item is None or keys != list(value):
+            self._commit(rebuild=True)
+            return
+
+        item.setText(1, summarize(value))
+        for child, key in zip(children, keys):
+            child.setText(1, summarize(value[key]))
+        self.value_changed.emit(self.value)
 
     @staticmethod
     def _coerce_scalar(t):

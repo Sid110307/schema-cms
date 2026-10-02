@@ -1,3 +1,4 @@
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
 from .editors.graph_editor import GraphEditor
@@ -10,6 +11,8 @@ from ..core.schema import schema_for
 
 
 class EditorHost(QWidget):
+    move_requested = Signal(object, object, int, str)
+
     def __init__(self):
         super().__init__()
 
@@ -33,9 +36,14 @@ class EditorHost(QWidget):
         if self._editor is None:
             return
 
+        self.flush_pending()
         self.root_layout.removeWidget(self._editor)
         self._editor.deleteLater()
         self._editor = None
+
+    def flush_pending(self):
+        if self._editor is not None and hasattr(self._editor, "flush_pending"):
+            self._editor.flush_pending()
 
     def _set_editor(self, ed):
         if hasattr(ed, "value_changed"):
@@ -45,6 +53,7 @@ class EditorHost(QWidget):
         self.root_layout.addWidget(self._editor, 1)
 
     def set_entry(self, ref, value, title=""):
+        self._clear_editor()
         self._current_ref = ref
         s = schema_for(ref.export_name, value)
 
@@ -54,7 +63,6 @@ class EditorHost(QWidget):
         reverse = s.get("reverse", False)
         object_schemas = ext.get_object_schemas()
         self.title.setText(f"{ref.file_path.name}  →  {ref.export_name}")
-        self._clear_editor()
 
         if factory := ext.get_editor(kind):
             context = {
@@ -71,7 +79,6 @@ class EditorHost(QWidget):
         if kind == "document":
             if isinstance(value, JSTemplate):
                 ed = MarkdownEditor(value.text)
-                self._clear_editor()
                 self._editor = ed
                 self.root_layout.addWidget(ed, 1)
                 ed.value_changed.connect(lambda t: self._commit(JSTemplate(t)))
@@ -85,12 +92,20 @@ class EditorHost(QWidget):
             rows = value if isinstance(value, list) else []
             obj_schema = object_schemas.get(item_schema or "")
             ed = TableEditor(rows, object_schema = obj_schema, title_field = title_field,
-                            reverse = reverse if isinstance(reverse, bool) else False)
+                            reverse = reverse if isinstance(reverse, bool) else False,
+                            move_enabled = bool(item_schema))
+            ed.move_requested.connect(
+                lambda row: self.move_requested.emit(ref, (), row, item_schema))
         elif kind == "graph":
             ed = GraphEditor(value if isinstance(value, (dict, list)) else {}, title_field,
                             object_schemas = object_schemas,
                             item_schema = s.get("item_schema"),
                             field_schemas = s.get("field_schemas"))
+            ed.move_requested.connect(
+                lambda path, row: self.move_requested.emit(
+                    ref, path, row,
+                    ((s.get("field_schemas") or {}).get(path[-1]) if path and isinstance(path[-1], str)
+                     else None) or item_schema))
         elif isinstance(value, str):
             ed = MarkdownEditor(value)
         elif isinstance(value, (dict, list)):

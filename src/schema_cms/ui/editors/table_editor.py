@@ -4,11 +4,47 @@ from dataclasses import dataclass
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt, Signal
 from PySide6.QtGui import QBitmap, QPainter, QRegion
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLineEdit, QMessageBox, \
-    QPlainTextEdit, QTableView, QVBoxLayout, QWidget
+    QPlainTextEdit, QPushButton, QTableView, QVBoxLayout, QWidget
 
 from .media_list_editor import ImagePicker
 from ..icons import icon_button
-from ...core.js_exports import JSTemplate
+from ...core.js_exports import JSRaw, JSTemplate
+
+
+_MISSING = object()
+
+
+def _display_value(value):
+    if value is None or value is _MISSING:
+        return ""
+    if isinstance(value, (JSRaw, JSTemplate)):
+        return value.text
+    return str(value)
+
+
+def _coerce_value(text, old=_MISSING, kind="string"):
+    if old is not _MISSING and text == _display_value(old):
+        return old
+    if isinstance(old, (JSRaw, JSTemplate)):
+        return type(old)(text)
+
+    numeric = kind in ("number", "integer", "float") or (isinstance(old, (int, float)) and not isinstance(old, bool))
+    if numeric:
+        value = text.strip()
+        if not value:
+            raise ValueError("Enter a number")
+        try:
+            return int(value) if kind != "float" and re.fullmatch(r"[+-]?\d+", value) else float(value)
+        except ValueError as exc:
+            raise ValueError(f"Invalid number: {text}") from exc
+
+    if kind in ("boolean", "bool") or isinstance(old, bool):
+        value = text.strip().lower()
+        if value not in ("true", "false"):
+            raise ValueError("Enter true or false")
+        return value == "true"
+
+    return text
 
 
 @dataclass(frozen = True)
@@ -71,12 +107,13 @@ class RowFilterProxyModel(QSortFilterProxyModel):
 class ListObjectTableModel(QAbstractTableModel):
     changed = Signal()
 
-    def __init__(self, rows, columns, reverse=False):
+    def __init__(self, rows, columns, reverse=False, field_kinds=None):
         super().__init__()
 
         self.rows = rows
         self.columns = columns
         self.reverse = reverse
+        self.field_kinds = field_kinds or {}
 
     def rowCount(self, _=QModelIndex()):
         return len(self.rows)
@@ -105,7 +142,7 @@ class ListObjectTableModel(QAbstractTableModel):
         key = self.columns[c]
         val = self.rows[r].get(key, "")
 
-        if isinstance(val, JSTemplate):
+        if isinstance(val, (JSRaw, JSTemplate)):
             val = val.text
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             return "" if val is None else str(val)
@@ -127,9 +164,14 @@ class ListObjectTableModel(QAbstractTableModel):
         key = self.columns[c]
         v = "" if value is None else str(value)
 
-        old_val = self.rows[r].get(key, "")
-        self.rows[r][key] = JSTemplate(
-            v) if isinstance(old_val, JSTemplate) else v
+        old_val = self.rows[r].get(key, _MISSING)
+        try:
+            new_val = _coerce_value(v, old_val, self.field_kinds.get(key, "string"))
+        except ValueError:
+            return False
+        if new_val == old_val:
+            return True
+        self.rows[r][key] = new_val
 
         self.dataChanged.emit(
             index, index, [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole])
@@ -206,11 +248,11 @@ class RecordDialog(QDialog):
                                Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(form)
         initial = initial or {}
+        self._initial = initial
 
         for f in self._fields:
             v = initial.get(f.name, "")
-            if isinstance(v, JSTemplate):
-                v = v.text
+            v = _display_value(v)
 
             if f.kind == "image":
                 w = ImagePicker(v)
@@ -238,27 +280,37 @@ class RecordDialog(QDialog):
             elif isinstance(w, QPlainTextEdit):
                 v = w.toPlainText()
             else:
-                v = w.text().strip()
+                v = w.text()
 
             spec = self._spec_by_name.get(name)
-            if spec and spec.kind == "template":
-                out[name] = JSTemplate(v)
-            else:
-                out[name] = v
+            kind = spec.kind if spec else "string"
+            old = self._initial.get(name, _MISSING)
+            out[name] = JSTemplate(v) if kind == "template" else _coerce_value(v, old, kind)
 
         return out
+
+    def accept(self):
+        try:
+            self.value()
+        except ValueError as exc:
+            QMessageBox.warning(self, "Invalid value", str(exc))
+            return
+        super().accept()
 
 
 class TableEditor(QWidget):
     value_changed = Signal(list)
+    move_requested = Signal(int)
 
-    def __init__(self, value, *, object_schema=None, title_field="title", default_columns=None, reverse=False):
+    def __init__(self, value, *, object_schema=None, title_field="title", default_columns=None, reverse=False,
+                 move_enabled=False):
         super().__init__()
 
         self.value = value
         self.object_schema = object_schema or {}
         self.title_field = title_field
         self.reverse = reverse
+        self.move_enabled = move_enabled
 
         cols = []
         seen = set()
@@ -278,8 +330,12 @@ class TableEditor(QWidget):
             cols = (default_columns[:] if default_columns else [title_field])
 
         self.columns = cols
+        field_kinds = {
+            key: spec.get("type", "string") if isinstance(spec, dict) else spec
+            for key, spec in self.object_schema.items()
+        }
         self.model = ListObjectTableModel(
-            self.value, self.columns, self.reverse)
+            self.value, self.columns, self.reverse, field_kinds)
         self.proxy = RowFilterProxyModel(self)
         self.proxy.setSourceModel(self.model)
 
@@ -294,12 +350,16 @@ class TableEditor(QWidget):
         self.btn_add = icon_button("add", tooltip = "Add an entry")
         self.btn_edit = icon_button("edit", tooltip = "Edit selected entry")
         self.btn_del = icon_button("delete", tooltip = "Delete selected entry")
+        self.btn_move = QPushButton("Move to…")
+        self.btn_move.setToolTip("Move selected entry to another page or group")
         self.btn_up = icon_button("up", tooltip = "Move selected entry up")
         self.btn_dn = icon_button("down", tooltip = "Move selected entry down")
 
         top.addWidget(self.btn_add)
         top.addWidget(self.btn_edit)
         top.addWidget(self.btn_del)
+        if move_enabled:
+            top.addWidget(self.btn_move)
         top.addStretch(1)
         top.addWidget(self.btn_up)
         top.addWidget(self.btn_dn)
@@ -325,6 +385,7 @@ class TableEditor(QWidget):
         self.btn_add.clicked.connect(self.add_row)
         self.btn_edit.clicked.connect(self.edit_row)
         self.btn_del.clicked.connect(self.delete_row)
+        self.btn_move.clicked.connect(self.move_to_page)
         self.btn_up.clicked.connect(self.move_up)
         self.btn_dn.clicked.connect(self.move_down)
 
@@ -348,8 +409,10 @@ class TableEditor(QWidget):
                     kind = v if isinstance(v, str) else "string"
                     specs.append(FieldSpec(name = k, kind = kind,
                                            multiline = _looks_multiline(k, None)))
-        else:
-            for k in self.columns:
+
+        known = {spec.name for spec in specs}
+        for k in self.columns:
+            if k not in known:
                 specs.append(FieldSpec(name = k, kind = "string",
                                        multiline = _looks_multiline(k, None)))
 
@@ -370,14 +433,10 @@ class TableEditor(QWidget):
         self.value_changed.emit(self.value)
 
     def _refresh_columns_from_row(self, row):
-        changed = False
-        for k in row.keys():
-            if k not in self.columns:
-                self.columns.append(k)
-                changed = True
-
-        if changed:
+        added = [k for k in row if k not in self.columns]
+        if added:
             self.model.beginResetModel()
+            self.columns.extend(added)
             self.model.columns = self.columns
             self.model.endResetModel()
             self.proxy.set_filter_text(self.search.text())
@@ -388,6 +447,7 @@ class TableEditor(QWidget):
 
         self.btn_edit.setEnabled(has_sel)
         self.btn_del.setEnabled(has_sel)
+        self.btn_move.setEnabled(self.move_enabled and has_sel)
 
         if not has_sel or self.search.text().strip() != "":
             self.btn_up.setEnabled(False)
@@ -405,7 +465,9 @@ class TableEditor(QWidget):
 
         row = dlg.value()
         self._refresh_columns_from_row(row)
+        self.model.beginInsertRows(QModelIndex(), 0, 0)
         self.value.insert(0, row)
+        self.model.endInsertRows()
         self.proxy.set_filter_text(self.search.text())
         self._emit()
 
@@ -419,11 +481,11 @@ class TableEditor(QWidget):
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
-        row = dlg.value()
+        row = {**self.value[idx], **dlg.value()}
         self._refresh_columns_from_row(row)
         self.value[idx] = row
         self.proxy.set_filter_text(self.search.text())
-        self._emit()
+        self.model.dataChanged.emit(self.model.index(idx, 0), self.model.index(idx, len(self.columns) - 1))
 
     def delete_row(self):
         idx = self._selected_row_index()
@@ -432,9 +494,16 @@ class TableEditor(QWidget):
         if QMessageBox.question(self, "Delete", "Delete selected entry?") != QMessageBox.StandardButton.Yes:
             return
 
+        self.model.beginRemoveRows(QModelIndex(), idx, idx)
         self.value.pop(idx)
+        self.model.endRemoveRows()
         self.proxy.set_filter_text(self.search.text())
         self._emit()
+
+    def move_to_page(self):
+        idx = self._selected_row_index()
+        if idx is not None:
+            self.move_requested.emit(idx)
 
     def _reselect(self, src_cur, src_prev):
         if self.model.move_row(src_cur, src_prev):

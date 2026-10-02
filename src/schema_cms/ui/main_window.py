@@ -1,9 +1,13 @@
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QMessageBox, QPushButton, QSplitter, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QMainWindow, QMessageBox, QPushButton, QSplitter, QVBoxLayout, QWidget
 
 from .editor_host import EditorHost
+from .editors.table_editor import pretty_label
 from .pages_tree import PagesTree
+from .. import ext
 from ..config import get_app_title
+from ..core.datastore import ExportRef
+from ..core.schema import schema_for
 
 
 class MainWindow(QMainWindow):
@@ -35,6 +39,7 @@ class MainWindow(QMainWindow):
 
         self.editor = self._create_editor()
         self.editor.set_store_setter(self.store.set)
+        self.editor.move_requested.connect(self.move_item)
         right_layout.addWidget(self.editor, 3)
 
         splitter.setStretchFactor(0, 1)
@@ -61,6 +66,7 @@ class MainWindow(QMainWindow):
         return EditorHost()
 
     def closeEvent(self, event):
+        self.editor.flush_pending()
         if not (hasattr(self.store, "has_unsaved") and self.store.has_unsaved()):
             event.accept()
             return
@@ -107,8 +113,74 @@ class MainWindow(QMainWindow):
         value = self.store.get(ref)
         self.editor.set_entry(ref, value, ref.export_name)
 
+    def _move_destinations(self, source_ref, source_path, item_schema):
+        destinations = []
+        for file_path in self.store.list_files():
+            for export_name, value in self.store.load_file(file_path).items():
+                ref = ExportRef(file_path, export_name)
+                schema = schema_for(export_name, value)
+                kind = schema.get("kind")
+                label = ext.get_export_label(export_name)
+
+                if kind == "collection" and schema.get("item_schema") == item_schema:
+                    if isinstance(value, list) and all(isinstance(row, dict) for row in value):
+                        destinations.append((f"{label} ({file_path.name})", ref, ()))
+
+                if kind == "graph" and isinstance(value, (dict, list)):
+                    field_schemas = schema.get("field_schemas") or {}
+
+                    def visit(node, path):
+                        if isinstance(node, list):
+                            key = path[-1] if path else None
+                            node_schema = field_schemas.get(key) or schema.get("item_schema")
+                            if node_schema == item_schema and all(isinstance(row, dict) for row in node):
+                                group = " → ".join(pretty_label(part) for part in path)
+                                name = f"{label} → {group}" if group else label
+                                destinations.append((f"{name} ({file_path.name})", ref, path))
+                        elif isinstance(node, dict):
+                            for key, child in node.items():
+                                visit(child, path + (key,))
+
+                    visit(value, ())
+
+        return [(label, ref, path) for label, ref, path in destinations
+                if ref != source_ref or path != tuple(source_path)]
+
+    def move_item(self, source_ref, source_path, row, item_schema):
+        self.editor.flush_pending()
+        try:
+            destinations = self._move_destinations(source_ref, source_path, item_schema)
+        except Exception as exc:
+            QMessageBox.critical(self, "Move failed", str(exc))
+            return
+
+        if not destinations:
+            QMessageBox.information(self, "Move entry", "No compatible destination page or group is available.")
+            return
+
+        labels = [label for label, _, _ in destinations]
+        label, ok = QInputDialog.getItem(self, "Move entry", "Destination:", labels, 0, False)
+        if not ok:
+            return
+
+        destination_label, destination_ref, destination_path = destinations[labels.index(label)]
+        try:
+            self.store.move_item(source_ref, source_path, row, destination_ref, destination_path)
+        except Exception as exc:
+            QMessageBox.critical(self, "Move failed", str(exc))
+            return
+
+        self.editor.set_entry(source_ref, self.store.get(source_ref), source_ref.export_name)
+        self.statusBar().showMessage(f"Moved entry to {destination_label}. Save to keep the change.", 8000)
+
     def save_all(self):
-        if saved := self.store.save_all():
+        self.editor.flush_pending()
+        try:
+            saved = self.store.save_all()
+        except Exception as exc:
+            QMessageBox.critical(self, "Save failed", f"Could not save changes:\n{exc}")
+            return
+        if saved:
             QMessageBox.information(
                 self, "Saved", f"Saved {len(saved)} file(s).")
         else:

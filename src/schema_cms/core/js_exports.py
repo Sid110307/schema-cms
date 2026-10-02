@@ -14,7 +14,7 @@ _JS_IDENT = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*$")
 
 
 def summarize(v):
-    if isinstance(v, JSTemplate):
+    if isinstance(v, (JSTemplate, JSRaw)):
         v = v.text
     if isinstance(v, dict):
         n = len(v)
@@ -70,6 +70,14 @@ class ExportSpan:
 @dataclass(frozen=True)
 class JSTemplate:
     text: str
+
+
+@dataclass(frozen=True)
+class JSRaw:
+    text: str
+
+    def __str__(self):
+        return self.text
 
 
 def _node_text(src, n):
@@ -195,7 +203,7 @@ def _node_to_py(src, n):
                 return int(s, 8)
             return int(s, 10)
         except Exception:
-            return s
+            return JSRaw(s)
     if t == "true":
         return True
     if t == "false":
@@ -219,17 +227,17 @@ def _node_to_py(src, n):
             return +v
         if op == "!" and isinstance(v, bool):
             return not v
-        return s
+        return JSRaw(s)
     if t in ("array", "array_expression"):
         return [_node_to_py(src, ch) for ch in n.named_children]
     if t in ("object", "object_expression"):
         out = {}
         for ch in n.named_children:
             if ch.type != "pair":
-                continue
+                return JSRaw(s)
             named = ch.named_children
             if len(named) < 2:
-                continue
+                return JSRaw(s)
 
             k_node, v_node = named[0], named[1]
             kt = _node_text(src, k_node).strip()
@@ -239,11 +247,11 @@ def _node_to_py(src, n):
             elif k_node.type == "string":
                 key = _unquote_js_str(kt)
             else:
-                key = kt
+                return JSRaw(s)
 
             out[key] = _node_to_py(src, v_node)
         return out
-    return s
+    return JSRaw(s)
 
 
 def _js_str(s):
@@ -262,6 +270,8 @@ def _to_js(v, indent=0):
     if isinstance(v, JSTemplate):
         body = v.text.replace("`", "\\`")
         return f"`{body}`"
+    if isinstance(v, JSRaw):
+        return v.text
     if isinstance(v, (int, float)):
         if isinstance(v, float):
             if math.isnan(v):
