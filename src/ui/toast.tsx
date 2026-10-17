@@ -37,7 +37,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 			<div className="toasts" aria-live="polite">
 				{toasts.map((t) => (
 					<div key={t.id} className={`toast toast-${t.kind}`}>
-						<Icon name={t.kind === "error" ? "alert" : "check"} />
+						<Icon name={t.kind === "error" ? "alert" : t.kind === "info" ? "info" : "success"} />
 						<span>{t.message}</span>
 						<button type="button" onClick={() => dismiss(t.id)} aria-label="Dismiss">
 							<Icon name="close" size={12} />

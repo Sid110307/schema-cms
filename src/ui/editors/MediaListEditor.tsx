@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { fileName, resolveMedia } from "../../core/media";
 import { type JSValue, moveInArray } from "../../core/values";
 import { Button, Empty, Spacer, Toolbar } from "../common";
+import { Icon } from "../icons";
 import { useDialogs } from "../dialogs";
 import { useReorder } from "../dnd";
 import { MediaPreview, Thumb, usePickMedia } from "./Media";
@@ -91,6 +92,9 @@ export function MediaListEditor({ value, onChange }: { value: JSValue; onChange:
 								onClick={() => setSel(i)}
 								{...reorder.itemProps(i)}
 							>
+								<span className="grip">
+									<Icon name="grip" size={14} />
+								</span>
 								<Thumb jsPath={item} />
 								<span className="list-text">
 									<span className="list-title">{fileName(item)}</span>

@@ -94,7 +94,7 @@ function PromptBody({ label, initial, placeholder, validate, close }: {
 			</div>
 			<div className="modal-footer">
 				<Button onClick={() => close(null)}>Cancel</Button>
-				<Button type="submit" variant="primary">
+				<Button type="submit" variant="primary" icon="check">
 					OK
 				</Button>
 			</div>
@@ -136,7 +136,7 @@ function ChooseBody<T>({ label, options, close }: { label?: string; options: Cho
 			</div>
 			<div className="modal-footer">
 				<Button onClick={() => close(null)}>Cancel</Button>
-				<Button type="submit" variant="primary" disabled={!options.length}>
+				<Button type="submit" variant="primary" icon="check" disabled={!options.length}>
 					Select
 				</Button>
 			</div>
@@ -176,7 +176,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
 						<div className="modal-body modal-message">{message}</div>
 						<div className="modal-footer">
 							<Button onClick={() => close(null)}>Cancel</Button>
-							<Button variant={danger ? "danger" : "primary"} onClick={() => close(true)}>
+							<Button variant={danger ? "danger" : "primary"} icon={danger ? "alert" : "check"} onClick={() => close(true)}>
 								{confirmLabel}
 							</Button>
 						</div>

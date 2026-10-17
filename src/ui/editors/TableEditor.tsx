@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { type ObjectSchema, fieldSpecs } from "../../core/schema";
 import { type JSObject, type JSValue, type Path, displayValue, isObject, moveInArray, prettyLabel } from "../../core/values";
 import { Button, Empty, SearchInput, Spacer, Toolbar } from "../common";
+import { Icon } from "../icons";
 import { useDialogs } from "../dialogs";
 import { useMoveDrag, useReorder } from "../dnd";
 import { RecordForm } from "./RecordForm";
@@ -180,7 +181,12 @@ export function TableEditor({ value, onChange, objectSchema, titleField = "title
 									onClick={() => setSel(index)}
 									onDoubleClick={() => edit(index)}
 								>
-									<td className="col-num">{rowNumber(index)}</td>
+									<td className="col-num">
+										<span className="row-num">{rowNumber(index)}</span>
+										<span className="grip">
+											<Icon name="grip" size={14} />
+										</span>
+									</td>
 									{columns.map((c) => {
 										const text = cellText(row[c]);
 										return (

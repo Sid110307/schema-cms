@@ -89,7 +89,7 @@ export function DictEditor({ value, onChange, objectSchema }: { value: JSObject;
 			</Toolbar>
 			{error && <div className="form-error">{error}</div>}
 			{entries.length === 0 ? (
-				<Empty>No fields.</Empty>
+				<Empty icon="tree">No fields.</Empty>
 			) : (
 				<div className="dict-rows">
 					{entries.map(([k, v]) => {

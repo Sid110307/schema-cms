@@ -84,7 +84,7 @@ function NewValueForm({ withKey, allowBlank, existing, close }: {
 			</div>
 			<div className="modal-footer">
 				<Button onClick={() => close(null)}>Cancel</Button>
-				<Button type="submit" variant="primary">
+				<Button type="submit" variant="primary" icon="check">
 					Add
 				</Button>
 			</div>

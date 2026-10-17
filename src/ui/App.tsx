@@ -4,20 +4,22 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { backend } from "../core/backend";
 import { setImagePrefix } from "../core/media";
 import { type MoveDestination, moveDestinations } from "../core/moves";
+import { schemaFor } from "../core/schema";
 import { DataStore, type ExportRef, baseName, refKey, sameRef } from "../core/store";
-import type { Path } from "../core/values";
+import { type Path, isObject } from "../core/values";
 import type { ActionContext, CmsOptions } from "../types";
-import { Button, SearchInput } from "./common";
+import { Button, Empty, SearchInput } from "./common";
 import { useDialogs } from "./dialogs";
 import { type MoveDrag, MoveDragContext } from "./dnd";
 import { EditorHost } from "./EditorHost";
-import { Icon } from "./icons";
+import { Icon, type IconName } from "./icons";
 import { useNotify } from "./toast";
 
 interface Page {
 	ref: ExportRef;
 	label: string;
 	group: string;
+	icon: IconName;
 }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -79,13 +81,22 @@ export function App({ options }: { options: CmsOptions }) {
 	const pages: Page[] = useMemo(() => {
 		if (status !== "ready") return [];
 		const refs = store.refs();
+		const iconOf = (ref: ExportRef): IconName => {
+			const v = store.get(ref);
+			const kind = schemaFor(schemas, ref.name, v).kind;
+			if (kind === "asset_collection") return "media";
+			if (kind === "collection") return "table";
+			if (kind === "document") return "document";
+			if (kind === "graph" || isObject(v)) return "tree";
+			return Array.isArray(v) ? "list" : "text";
+		};
 		if (options.pages?.length) {
 			return options.pages.flatMap((p) => {
 				const ref = refs.find((r) => r.name === p.export);
-				return ref ? [{ ref, label: p.label ?? labelOf(p.export), group: "" }] : [];
+				return ref ? [{ ref, label: p.label ?? labelOf(p.export), group: "", icon: iconOf(ref) }] : [];
 			});
 		}
-		return refs.map((ref) => ({ ref, label: labelOf(ref.name), group: baseName(ref.file) }));
+		return refs.map((ref) => ({ ref, label: labelOf(ref.name), group: baseName(ref.file), icon: iconOf(ref) }));
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [status, store.version, options.pages, labelOf]);
 
@@ -174,10 +185,10 @@ export function App({ options }: { options: CmsOptions }) {
 						</div>
 						<div className="modal-footer">
 							<Button onClick={() => close(null)}>Cancel</Button>
-							<Button variant="danger" onClick={() => close("discard")}>
+							<Button variant="danger" icon="trash" onClick={() => close("discard")}>
 								Discard
 							</Button>
-							<Button variant="primary" onClick={() => close("save")}>
+							<Button variant="primary" icon="save" onClick={() => close("save")}>
 								Save
 							</Button>
 						</div>
@@ -278,7 +289,7 @@ export function App({ options }: { options: CmsOptions }) {
 				<Icon name="alert" size={28} />
 				<h1>Could not open the data folder</h1>
 				<pre>{loadError}</pre>
-				<Button variant="primary" onClick={load}>
+				<Button variant="primary" icon="reload" onClick={load}>
 					Retry
 				</Button>
 			</div>
@@ -295,6 +306,7 @@ export function App({ options }: { options: CmsOptions }) {
 		<div className={`app ${sidebarOpen ? "sidebar-open" : ""}`}>
 			<aside className="sidebar">
 				<div className="sidebar-head">
+					<div className="app-mark">{title.trim().charAt(0).toUpperCase() || "S"}</div>
 					<div className="app-title">{title}</div>
 					<button type="button" className="sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close menu">
 						<Icon name="close" />
@@ -307,7 +319,7 @@ export function App({ options }: { options: CmsOptions }) {
 				<nav className="page-list">
 					{groups.map((g) => (
 						<div key={g} className="page-group">
-							{g && <div className="page-group-title">{g}</div>}
+							<div className="page-group-title">{g || "Pages"}</div>
 							{shown
 								.filter((p) => p.group === g)
 								.map((p) => (
@@ -335,6 +347,7 @@ export function App({ options }: { options: CmsOptions }) {
 										}}
 										title={`${p.ref.name} · ${baseName(p.ref.file)}`}
 									>
+										<Icon name={p.icon} size={16} />
 										<span className="page-label">{p.label}</span>
 										{store.isDirty(p.ref) && <span className="dirty-dot" title="Unsaved changes" />}
 									</button>
@@ -353,7 +366,7 @@ export function App({ options }: { options: CmsOptions }) {
 					))}
 				</nav>
 				<div className="sidebar-foot">
-					<Button size="sm" variant="ghost" onClick={reload} disabled={!!busy}>
+					<Button size="sm" variant="ghost" icon="reload" onClick={reload} disabled={!!busy}>
 						Reload from disk
 					</Button>
 				</div>
@@ -373,7 +386,11 @@ export function App({ options }: { options: CmsOptions }) {
 							</div>
 						)}
 					</div>
-					{current && store.isDirty(current) && <span className="badge">Unsaved</span>}
+					{current && store.isDirty(current) && (
+						<span className="badge">
+							<span className="dirty-dot" /> Unsaved
+						</span>
+					)}
 				</header>
 
 				<div className={`content ${busy ? "is-busy" : ""}`} inert={busy ? true : undefined}>
@@ -392,7 +409,7 @@ export function App({ options }: { options: CmsOptions }) {
 						/>
 						</MoveDragContext.Provider>
 					) : (
-						<div className="empty">Select a page from the sidebar.</div>
+						<Empty icon="file">Select a page from the sidebar.</Empty>
 					)}
 				</div>
 
@@ -405,7 +422,9 @@ export function App({ options }: { options: CmsOptions }) {
 								<span className="dirty-dot" /> {dirtyCount} unsaved change{dirtyCount === 1 ? "" : "s"}
 							</span>
 						) : (
-							<span className="muted">All changes saved</span>
+							<span className="muted saved-status">
+								<Icon name="check" size={14} /> All changes saved
+							</span>
 						)}
 					</div>
 					{busy && (

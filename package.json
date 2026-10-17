@@ -21,7 +21,8 @@
 	},
 	"dependencies": {
 		"@tauri-apps/api": "^2.12.4",
-		"acorn": "^8.19.0"
+		"acorn": "^8.19.0",
+		"iconoir-react": "^7.12.1"
 	},
 	"peerDependencies": {
 		"react": "^19.0.0",

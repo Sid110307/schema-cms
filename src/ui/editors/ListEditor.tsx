@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { type JSValue, moveInArray, summarize } from "../../core/values";
 import { Button, Empty, Spacer, Toolbar } from "../common";
+import { Icon } from "../icons";
 import { useDialogs } from "../dialogs";
 import { useReorder } from "../dnd";
 import { pickNewValue } from "./NewValueForm";
@@ -55,11 +56,14 @@ export function ListEditor({ value, onChange }: { value: JSValue[]; onChange: (v
 				<Button icon="down" iconOnly title="Move down" onClick={() => move(1)} disabled={sel < 0 || sel >= value.length - 1} />
 			</Toolbar>
 			{value.length === 0 ? (
-				<Empty>This list is empty.</Empty>
+				<Empty icon="list">This list is empty.</Empty>
 			) : (
 				<ul className="list">
 					{value.map((v, i) => (
 						<li key={i} className={`list-item ${i === sel ? "selected" : ""} ${reorder.dropClass(i)}`} onClick={() => setSel(i)} {...reorder.itemProps(i)}>
+							<span className="grip">
+								<Icon name="grip" size={14} />
+							</span>
 							<span className="list-index">{i + 1}</span>
 							<span className="list-text">
 								<span className="list-title">{summarize(v) || <em className="muted">Empty text</em>}</span>

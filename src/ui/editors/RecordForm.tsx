@@ -66,7 +66,7 @@ export function RecordForm({ fields, initial, close }: { fields: FieldSpec[]; in
 			<div className="modal-footer">
 				<span className="hint">Ctrl+Enter to save</span>
 				<Button onClick={() => close(null)}>Cancel</Button>
-				<Button type="submit" variant="primary">
+				<Button type="submit" variant="primary" icon="check">
 					Save
 				</Button>
 			</div>
