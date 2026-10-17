@@ -1,50 +1,37 @@
 # schema-cms
 
-> An extensible desktop CMS/editor for structured JS exports, built on [Tauri](https://tauri.app).
+> A desktop editor for structured JS data files, built on [Tauri](https://tauri.app).
 
-schema-cms reads `export const name = ...` declarations from JS data files, gives each one a schema-aware editor, and writes changes back
-to only the exports you touched.
-
-## Quick start
+## Setup
 
 Requirements: [Node.js](https://nodejs.org) 20+, [pnpm](https://pnpm.io), [Rust](https://rustup.rs) and the
 [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
 
 ```bash
 pnpm install
-pnpm tauri dev                     # runs against ./schema-cms.config.json or env vars in the current directory
-pnpm tauri build                   # produces installers in target/release/bundle
+pnpm tauri dev
+pnpm tauri build
 ```
 
-Try the demo:
+Demo:
 
 ```bash
 SCHEMA_CMS_CONFIG=examples/demo/schema-cms.config.json pnpm tauri dev
 ```
 
-Prebuilt binaries are published on the [Releases](../../releases) page for every push to `master` (add `[skip]` to the commit title to
-skip a release).
+Builds are on the [Releases](../../releases) page.
 
 ## Configuration
 
-The standalone app looks for configuration in this order:
+Pass a config file as an argument, set `SCHEMA_CMS_CONFIG`, or put `schema-cms.config.json` in the working directory.
 
-1. A `.json` path passed as a command-line argument
-2. The `SCHEMA_CMS_CONFIG` environment variable
-3. `schema-cms.config.json` in the working directory
-
-Relative paths in a config file are resolved against the file's folder. Values missing from the config fall back to environment
-variables, then defaults.
-
-| Purpose                 | Config key    | Environment variable           | Default           |
+| Setting                 | Config key    | Environment variable           | Default           |
 |-------------------------|---------------|--------------------------------|-------------------|
 | Data entries directory  | `dataDir`     | `SCHEMA_CMS_DATA_ENTRIES_DIR`  | `.`               |
 | Entry file glob         | `entryGlob`   | `SCHEMA_CMS_ENTRY_GLOB`        | `*.js`            |
 | Public images directory | `imagesDir`   | `SCHEMA_CMS_PUBLIC_IMAGES_DIR` | `./public/images` |
 | Image path prefix in JS | `imagePrefix` | `SCHEMA_CMS_JS_IMAGE_PREFIX`   | `/images/`        |
 | App title               | `title`       | `SCHEMA_CMS_APP_TITLE`         | `Schema CMS`      |
-
-A config file also holds `schemas`, `objectSchemas` and `pages`:
 
 ```json
 {
@@ -66,13 +53,22 @@ A config file also holds `schemas`, `objectSchemas` and `pages`:
 }
 ```
 
-Without `pages`, every export of every matched file is listed, grouped by file. With `pages`, only those exports are listed, in that order.
+`pages` sets which exports are listed and in what order. Without it, every export is listed.
 
-## Using schema-cms as a library
+## Schemas
 
-An app can embed schema-cms and extend it, the way [ONe Group](https://github.com/Sid110307/ONe-Group/tree/master/ui) does.
+| Property        | Applies to        | Description                                       |
+|-----------------|-------------------|---------------------------------------------------|
+| `kind`          | all               | `document`, `collection`, `asset_collection` or `graph`. Inferred if omitted. |
+| `title_field`   | collection, graph | Title shown in the editor.                        |
+| `item_schema`   | collection, graph | Object schema for list items.                     |
+| `field_schemas` | graph             | Object schemas for specific fields.               |
+| `reverse`       | collection        | Number rows from the end.                         |
 
-`Cargo.toml`:
+Object schemas map each field to `string`, `number`, `boolean`, `template` or `image`, or to
+`{ "type": "string", "multiline": true }`.
+
+## Embedding
 
 ```toml
 [dependencies]
@@ -87,12 +83,8 @@ tauri::Builder::default()
     .plugin(tauri_plugin_schema_cms::init())
 ```
 
-If your git config rewrites GitHub URLs to SSH, add `[net] git-fetch-with-cli = true` to `.cargo/config.toml`.
-
-In `tauri.conf.json`, enable the asset protocol (`app.security.assetProtocol.enable: true`) and set `dragDropEnabled: false` on the window.
-In the capability file, grant `core:window:allow-destroy`, `core:window:allow-set-title`, `dialog:default` and `schema-cms:default`.
-
-`package.json`:
+Enable the asset protocol and set `dragDropEnabled: false` on the window in `tauri.conf.json`, and grant `core:window:allow-destroy`,
+`core:window:allow-set-title`, `dialog:default` and `schema-cms:default`.
 
 ```json
 "dependencies": { "schema-cms": "github:Sid110307/schema-cms" }
@@ -104,73 +96,21 @@ import { mount } from "schema-cms";
 mount("#root", {
 	title: "My CMS",
 	paths: { dataDir: "/abs/path/to/data", entryGlob: "*.js", imagesDir: "/abs/path/to/images" },
-	imagePrefix: "/images/",
 	schemas: { ... },
 	objectSchemas: { ... },
 	pages: [{ export: "journals", label: "Journals" }],
-	labels: (name) => name.toUpperCase(),
-	actions: [
-		{
-			id: "publish",
-			label: "Publish",
-			icon: "upload",
-			async run(ctx) {
-				if (!(await ctx.save())) return;
-				ctx.setProgress(0, 1, "Publishing…");
-				// ...
-				ctx.notify("Published", "success");
-			},
-		},
-	],
+	actions: [{ id: "publish", label: "Publish", icon: "upload", run: async (ctx) => { ... } }],
 	editors: { myKind: MyEditor },
 });
 ```
 
-The package ships TypeScript source. In the consuming app's Vite config, pre-bundle its dependencies so dev mode resolves them:
+Vite config:
 
 ```ts
 optimizeDeps: {
 	include: ["react-dom/client", "schema-cms > acorn", "schema-cms > @tauri-apps/api/core", "schema-cms > @tauri-apps/api/window"],
 },
 ```
-
-### Custom editors
-
-`editors` maps a schema `kind` to a React component. It receives `exportRef` (`file`, `name`), `value`, `context` (`schema`,
-`titleField`, `itemSchema`, `objectSchemas`) and `onChange(newValue)`. Registering a built-in kind overrides the built-in editor.
-
-## Schemas
-
-### Entry schemas
-
-| Property        | Type                     | Applies to        | Description                                                                         |
-|-----------------|--------------------------|-------------------|-------------------------------------------------------------------------------------|
-| `kind`          | `string`                 | all               | Selects the editor. If omitted, the editor is inferred from the value's type.       |
-| `title_field`   | `string`                 | collection, graph | Title shown in the editor.                                                          |
-| `item_schema`   | `string`                 | collection, graph | Object schema used for list items. Enables moving entries between compatible lists. |
-| `field_schemas` | `Record<string, string>` | graph             | Maps field names to object schemas.                                                 |
-| `reverse`       | `boolean`                | collection        | Numbers table rows from the end without changing the data order.                    |
-
-### Object schemas
-
-Map each field name to a type: `string`, `number`, `boolean`, `template` or `image`. A field can also be
-`{ "type": "string", "multiline": true }`. `image` fields get a file picker and preview from the images directory.
-
-### Schema kinds
-
-| Kind               | Editor                                                                                               |
-|--------------------|------------------------------------------------------------------------------------------------------|
-| `document`         | Full-height text editor for template strings, markdown or long text.                                  |
-| `collection`       | Searchable table with add, edit, delete, drag-to-reorder and drag-to-move to another page.             |
-| `asset_collection` | Media list (images and videos) with previews, file picking and drag-to-reorder.                        |
-| `graph`            | Outline of nested objects and lists with a schema-aware detail panel.                                  |
-
-Without a matching `kind`, strings open in the text editor and objects or lists open in the graph editor.
-
-### Moving entries
-
-Drag a row from a table or outline onto a highlighted page in the sidebar, or use **Move to…**, to move it into any list that uses the
-same `item_schema`. Changes are kept in memory until you save (Ctrl+S).
 
 ## License
 

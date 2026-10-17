@@ -67,13 +67,19 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Set build version
+        shell: bash
+        run: echo '{"version":"2.0.${{ github.run_number }}","bundle":{"createUpdaterArtifacts":true}}' > src-tauri/tauri.ci.json
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         with:
-          tagName: v__VERSION__-build.${{ github.run_number }}
-          releaseName: Schema CMS v__VERSION__ (build ${{ github.run_number }})
+          tagName: v__VERSION__
+          releaseName: Schema CMS v__VERSION__
           releaseBody: Built from ${{ github.sha }}.
           releaseDraft: false
           prerelease: false
-          args: ${{ matrix.args }}
+          args: ${{ matrix.args }} --config src-tauri/tauri.ci.json

@@ -29,6 +29,12 @@
 			}
 		}
 	},
+	"plugins": {
+		"updater": {
+			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE1NDlEMDZFQzc5QkY4MzEKUldReCtKdkhidEJKcGFNQUdrV0s2cnIwbnFQdnpkQU5lazhTTUVzSUUzWE9Vc1FVK25rOU9BOFcK",
+			"endpoints": ["https://github.com/Sid110307/schema-cms/releases/latest/download/latest.json"]
+		}
+	},
 	"bundle": {
 		"active": true,
 		"targets": "all",
