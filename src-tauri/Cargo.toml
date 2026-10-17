@@ -1,0 +1,14 @@
+[package]
+name = "schema-cms"
+version = "2.0.0"
+description = "Schema CMS desktop app"
+edition.workspace = true
+license.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-schema-cms = { path = "../crates/tauri-plugin-schema-cms" }

@@ -1,321 +1,168 @@
 # schema-cms
 
-> An extensible CMS/editor for working with structured JS objects.
+> An extensible desktop CMS/editor for structured JS exports, built on [Tauri](https://tauri.app).
+
+schema-cms reads `export const name = ...` declarations from JS data files, gives each one a schema-aware editor, and writes changes back
+to only the exports you touched.
 
 ## Quick start
 
+Requirements: [Node.js](https://nodejs.org) 20+, [pnpm](https://pnpm.io), [Rust](https://rustup.rs) and the
+[Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
+
 ```bash
-python -m schema_cms
+pnpm install
+pnpm tauri dev                     # runs against ./schema-cms.config.json or env vars in the current directory
+pnpm tauri build                   # produces installers in target/release/bundle
 ```
+
+Try the demo:
+
+```bash
+SCHEMA_CMS_CONFIG=examples/demo/schema-cms.config.json pnpm tauri dev
+```
+
+Prebuilt binaries are published on the [Releases](../../releases) page for every push to `master` (add `[skip]` to the commit title to
+skip a release).
 
 ## Configuration
 
-### Environment variables
+The standalone app looks for configuration in this order:
 
-| Purpose                 | Description                                            | Variable                       | Default           |
-|-------------------------|--------------------------------------------------------|--------------------------------|-------------------|
-| Data entries directory  | The directory where data entry files are stored.       | `SCHEMA_CMS_DATA_ENTRIES_DIR`  | `.`               |
-| Entry file glob         | The glob pattern to match data entry files.            | `SCHEMA_CMS_ENTRY_GLOB`        | `*.js`            |
-| Public images directory | The directory where images are stored.                 | `SCHEMA_CMS_PUBLIC_IMAGES_DIR` | `./public/images` |
-| Image path prefix in JS | The path prefix used in JS exports for mapping images. | `SCHEMA_CMS_JS_IMAGE_PREFIX`   | `/images/`        |
-| App title               | The title of the application window.                   | `SCHEMA_CMS_APP_TITLE`         | `Schema CMS`      |
+1. A `.json` path passed as a command-line argument
+2. The `SCHEMA_CMS_CONFIG` environment variable
+3. `schema-cms.config.json` in the working directory
 
-Example:
+Relative paths in a config file are resolved against the file's folder. Values missing from the config fall back to environment
+variables, then defaults.
 
-```bash
-SCHEMA_CMS_DATA_ENTRIES_DIR=./data-entries
-SCHEMA_CMS_ENTRY_GLOB=*.js
-SCHEMA_CMS_PUBLIC_IMAGES_DIR=./public/images
-SCHEMA_CMS_JS_IMAGE_PREFIX=/images/
-SCHEMA_CMS_APP_TITLE="My CMS"
+| Purpose                 | Config key    | Environment variable           | Default           |
+|-------------------------|---------------|--------------------------------|-------------------|
+| Data entries directory  | `dataDir`     | `SCHEMA_CMS_DATA_ENTRIES_DIR`  | `.`               |
+| Entry file glob         | `entryGlob`   | `SCHEMA_CMS_ENTRY_GLOB`        | `*.js`            |
+| Public images directory | `imagesDir`   | `SCHEMA_CMS_PUBLIC_IMAGES_DIR` | `./public/images` |
+| Image path prefix in JS | `imagePrefix` | `SCHEMA_CMS_JS_IMAGE_PREFIX`   | `/images/`        |
+| App title               | `title`       | `SCHEMA_CMS_APP_TITLE`         | `Schema CMS`      |
+
+A config file also holds `schemas`, `objectSchemas` and `pages`:
+
+```json
+{
+	"title": "My CMS",
+	"dataDir": "./src/data",
+	"imagesDir": "./public/images",
+	"imagePrefix": "/images/",
+	"schemas": {
+		"content": { "kind": "document" },
+		"journals": { "kind": "collection", "item_schema": "publication", "title_field": "Journals", "reverse": true }
+	},
+	"objectSchemas": {
+		"publication": { "title": "string", "year": "number", "cover": "image" }
+	},
+	"pages": [
+		{ "export": "content", "label": "Home Page" },
+		{ "export": "journals", "label": "Journals" }
+	]
+}
 ```
 
-### Python configuration API
+Without `pages`, every export of every matched file is listed, grouped by file. With `pages`, only those exports are listed, in that order.
 
-Takes priority over environment variables if both are set.
+## Using schema-cms as a library
 
-| Purpose                 | Function                  |
-|-------------------------|---------------------------|
-| Data entries directory  | `set_data_entries_dir()`  |
-| Entry file glob         | `set_entry_glob()`        |
-| Public images directory | `set_public_images_dir()` |
-| Image path prefix in JS | `set_js_image_prefix()`   |
-| App title               | `set_app_title()`         |
+An app can embed schema-cms and extend it, the way [ONe Group](https://github.com/Sid110307/ONe-Group/tree/master/ui) does.
 
-Example:
+`Cargo.toml`:
 
-```python
-from schema_cms.config import (
-    set_data_entries_dir,
-    set_entry_glob,
-    set_public_images_dir,
-    set_js_image_prefix,
-    set_app_title,
-)
-
-set_data_entries_dir("./data-entries")
-set_entry_glob("*.js")
-set_public_images_dir("./public/images")
-set_js_image_prefix("/images/")
-set_app_title("My CMS")
+```toml
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-schema-cms = { git = "https://github.com/Sid110307/schema-cms" }
 ```
 
-## Customization
-
-### Registering schemas
-
-| Type            | Function                   | Example    |
-|-----------------|----------------------------|------------|
-| Document schema | `register_schema()`        | `"page"`   |
-| Object schema   | `register_object_schema()` | `"person"` |
-
-```python
-from schema_cms import ext
-
-ext.register_schema("page", {"kind": "document"})
-ext.register_object_schema("person", {
-    "name": "string",
-    "img":  "image",
-})
+```rust
+tauri::Builder::default()
+    .plugin(tauri_plugin_dialog::init())
+    .plugin(tauri_plugin_schema_cms::init())
 ```
 
-### Built-in editors
+In `tauri.conf.json`, enable the asset protocol (`app.security.assetProtocol.enable: true`) and set `dragDropEnabled: false` on the window.
+In the capability file, grant `core:window:allow-destroy`, `core:window:allow-set-title`, `dialog:default` and `schema-cms:default`.
 
-| Editor type     | Schema kind             | Description                                                                                                                                               |
-|-----------------|-------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|
-| MarkdownEditor  | `document`              | Editor for document or markdown fields.                                                                                                                   |
-| MediaListEditor | `asset_collection`      | Editor for media lists (images/videos). Uses configured JS prefix and local public images dir for picking and previews.                                   |
-| TableEditor     | `collection`            | Editor for list of dict collections. Uses `item_schema` to look up an object schema and renders rows in a table; supports add/edit/delete and reordering. |
-| GraphEditor     | `graph`                 | Editor for nested dict/list structures with schema-aware behavior (`item_schema` for lists and `field_schemas` for dicts).                                |
-| MarkdownEditor  | _(fallback: string)_    | If no schema kind matches and `value` is a `str`, edits it as markdown/text.                                                                              |
-| GraphEditor     | _(fallback: dict/list)_ | If no schema kind matches and `value` is a `dict` or `list`, edits it as a generic nested structure.                                                      |
-| MarkdownEditor  | _(fallback: other)_     | If no schema kind matches and `value` is of another type, converts it to string and edits as markdown/text.                                               |
+`package.json`:
+
+```json
+"dependencies": { "schema-cms": "github:Sid110307/schema-cms" }
+```
+
+```ts
+import { mount } from "schema-cms";
+
+mount("#root", {
+	title: "My CMS",
+	paths: { dataDir: "/abs/path/to/data", entryGlob: "*.js", imagesDir: "/abs/path/to/images" },
+	imagePrefix: "/images/",
+	schemas: { ... },
+	objectSchemas: { ... },
+	pages: [{ export: "journals", label: "Journals" }],
+	labels: (name) => name.toUpperCase(),
+	actions: [
+		{
+			id: "publish",
+			label: "Publish",
+			icon: "upload",
+			async run(ctx) {
+				if (!(await ctx.save())) return;
+				ctx.setProgress(0, 1, "Publishing…");
+				// ...
+				ctx.notify("Published", "success");
+			},
+		},
+	],
+	editors: { myKind: MyEditor },
+});
+```
+
+The package ships TypeScript source. Add `optimizeDeps: { exclude: ["schema-cms"] }` to the consuming app's Vite config.
 
 ### Custom editors
 
-Custom editors can be registered for specific schema kinds. The editor factory function receives the `ref`, `value`, and
-`context` parameters and should return a `QWidget` instance.
-
-- `ref`: Reference object with metadata about the entry being edited.
-  - `ref.file_path`: The path to the data entry file.
-  - `ref.export_name`: The name of the export within the file.
-- `value`: The current value of the export being edited.
-- `context`: Context object with information about the data.
-  - `context.schema`
-  - `context.object_schemas`
-  - `context.title_field`
-  - `context.item_schema`
-
-```python
-from PySide6.QtWidgets import QWidget
-
-from schema_cms import ext
-
-
-class MyEditor(QWidget):
-    def __init__(self, value, context):
-        super().__init__()
-        # Custom editor implementation
-
-
-def editor_factory(ref, value, context):
-    return MyEditor(value, context)
-
-
-ext.register_editor("document", editor_factory)
-```
-
-Built-in editors can also be overridden by registering a custom editor for the same schema kind.
-
-### Export labels
-
-Customizes how export names are displayed in the pages tree.
-
-```python
-from schema_cms import ext
-
-ext.set_export_label_resolver(lambda name: name.replace("_", " ").title())
-```
+`editors` maps a schema `kind` to a React component. It receives `exportRef` (`file`, `name`), `value`, `context` (`schema`,
+`titleField`, `itemSchema`, `objectSchemas`) and `onChange(newValue)`. Registering a built-in kind overrides the built-in editor.
 
 ## Schemas
 
-Schemas define the structure and types of data entries. If no schemas are registered, the editor will use default
-behavior based on inferring types from the data.
-
 ### Entry schemas
 
-These are the top-level exports for data entry files.
-
-| Property      | Type             | Applies to        | Description                                                                                                                |
-|---------------|------------------|-------------------|----------------------------------------------------------------------------------------------------------------------------|
-| kind          | `str`            | all               | Selects which editor to use. If omitted, the editor is chosen by inferring the value type (`str`, `list`, `dict`, etc.).   |
-| title_field   | `str`            | collection, graph | Specifies which field to use as the title in the editor UI.                                                                |
-| item_schema   | `str`            | collection, graph | Name of an object schema used to interpret items when the value is a list.                                                 |
-| field_schemas | `dict[str, str]` | graph             | Mapping of field name to schema key. Used to explicitly type specific dict fields.                                         |
-| reverse       | `bool`           | collection        | If `True`, makes the table's serial numbers count from the end without changing the actual data order. Default is `False`. |
-
-```js
-export const content = `# Hello`;
-export const someData = [
-    {name: "Item 1", value: 10},
-    {name: "Item 2", value: 20},
-];
-```
-
-The names (`content`, `someData`) correspond to the schema keys.
+| Property        | Type                     | Applies to        | Description                                                                         |
+|-----------------|--------------------------|-------------------|-------------------------------------------------------------------------------------|
+| `kind`          | `string`                 | all               | Selects the editor. If omitted, the editor is inferred from the value's type.       |
+| `title_field`   | `string`                 | collection, graph | Title shown in the editor.                                                          |
+| `item_schema`   | `string`                 | collection, graph | Object schema used for list items. Enables moving entries between compatible lists. |
+| `field_schemas` | `Record<string, string>` | graph             | Maps field names to object schemas.                                                 |
+| `reverse`       | `boolean`                | collection        | Numbers table rows from the end without changing the data order.                    |
 
 ### Object schemas
 
-These define the structure of objects used within entry schemas or other object schemas.
-
-| Property     | Type  | Description                                                                                   |
-|--------------|-------|-----------------------------------------------------------------------------------------------|
-| <field_name> | `str` | Name of the field mapped to its type.                                                         |
-| kind         | `str` | Allows an object schema to behave like an editor node and be referenced from `field_schemas`. |
-| item_schema  | `str` | Used when `kind` is `collection` to define the schema for list items.                         |
-
-Common field types:
-
-- `string`: A simple text field.
-- `number`: A numeric field.
-- `image`: An image field that uses the configured JS prefix and local public images dir for picking and previews.
-
-```js
-export const person = {
-    name: "John Doe",
-    img: "/images/person.jpg",
-};
-```
-
-The schema key (`person`) is used in entry schemas or other object schemas to reference this structure.
+Map each field name to a type: `string`, `number`, `boolean`, `template` or `image`. A field can also be
+`{ "type": "string", "multiline": true }`. `image` fields get a file picker and preview from the images directory.
 
 ### Schema kinds
 
-The `kind` property defines which editor to use for an export.
+| Kind               | Editor                                                                                               |
+|--------------------|------------------------------------------------------------------------------------------------------|
+| `document`         | Full-height text editor for template strings, markdown or long text.                                  |
+| `collection`       | Searchable table with add, edit, delete, drag-to-reorder and drag-to-move to another page.             |
+| `asset_collection` | Media list (images and videos) with previews, file picking and drag-to-reorder.                        |
+| `graph`            | Outline of nested objects and lists with a schema-aware detail panel.                                  |
 
-- `document`: This can be used for template strings, multi-line strings, markdown content, or any large plain text.
+Without a matching `kind`, strings open in the text editor and objects or lists open in the graph editor.
 
-> Example:
->
-> ```python
-> ext.register_schema("content", {
->     "kind": "document",
-> })
-> ```
->
-> For data like:
->
-> ```js
-> export const content = `# Hello World
-> This is a sample document.
-> `;
-> ```
->
-> ![Document](./screenshots/document.png)
+### Moving entries
 
-- `collection`: A list of items with a defined `item_schema`.
-
-> Each row corresponds to one object in the list, and the columns are defined by the object schema referenced by
-`item_schema`.
->
-> The `title_field` property can be used to specify which field to use as the title in the editor UI.
->
-> The `reverse` property can be set to `True` to make the table's serial numbers count from the end without changing the
-> actual data order. Default is `False`.
->
-> Example:
->
-> ```python
-> ext.register_schema("journals", {
->     "kind": "collection",
->     "item_schema": "publication",
->     "title_field": "Journals",
->     "reverse": True,
-> })
-> ext.register_object_schema("publication", {
->     "title": "string",
->     "year": "number",
-> })
-> ```
->
-> For data like:
->
-> ```js
-> export const journals = [
->     { title: "Research on X", year: 2020 },
->     { title: "Advances in Y", year: 2021 },
-> ];
-> ```
->
-> ![Collection](./screenshots/collection.png)
->
-> If no `item_schema` is provided, the types will be inferred from the items.
-
-- `asset_collection`: A list of media assets (images/videos).
-
-> Example:
->
-> ```python
-> ext.register_schema("media", {
->     "kind": "asset_collection",
-> })
-> ```
->
-> For data like:
->
-> ```js
-> export const media = [
->     "/media/photo1.jpg",
->     "/media/epic stuff.png",
->     "/media/cool_video.mp4",
-> ];
-> ```
->
-> ![Asset Collection](./screenshots/media.png)
-
-- `graph`: A nested structure of dicts/lists with defined `field_schemas` and/or `item_schema`.
-
-> The `field_schemas` property is a dict mapping field names to their respective schema keys (for dict fields). These
-> can be further nested schemas.
->
-> The `item_schema` property defines the schema key for list items (for list fields).
->
-> The `title_field` property can be used to specify which field to use as the title in the editor UI.
->
-> Example:
->
-> ```python
-> ext.register_schema("team", {
->     "kind": "graph",
->     "title_field": "Team",
->     "field_schemas": {
->         "lead": "person",
->         "members": "person",
->     },
-> })
-> ext.register_object_schema("person", {
->     "name": "string",
->     "img":  "image",
-> })
-> ```
->
-> For data like:
->
-> ```js
-> export const team = {
->     lead: { name: "Alice", img: "/images/alice.jpg" },
->     members: [
->         { name: "Bob", img: "/images/bob.jpg" },
->         { name: "Charlie", img: "/images/charlie.jpg" },
->     ],
-> };
-> ```
->
-> ![Graph](./screenshots/graph.png)
-
-If no `kind` is specified, the editor falls back to default behavior based on the value type.
-
-If a custom editor is registered for a specific `kind`, it will take priority.
+Drag a row from a table or outline onto a highlighted page in the sidebar, or use **Move to…**, to move it into any list that uses the
+same `item_schema`. Changes are kept in memory until you save (Ctrl+S).
 
 ## License
 

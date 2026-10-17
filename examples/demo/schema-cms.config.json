@@ -1,0 +1,33 @@
+{
+	"title": "Schema CMS Demo",
+	"dataDir": ".",
+	"entryGlob": "*.js",
+	"imagesDir": "./images",
+	"imagePrefix": "/images/",
+	"schemas": {
+		"welcomeDoc": { "kind": "document" },
+		"mediaGallery": { "kind": "asset_collection" },
+		"publications": { "kind": "collection", "item_schema": "publication", "title_field": "Publications", "reverse": true },
+		"teamGraph": {
+			"kind": "graph",
+			"title_field": "Team",
+			"field_schemas": { "lead": "person", "contact": "contact", "members": "person", "highlights": "newsItem" }
+		},
+		"siteConfig": { "kind": "graph", "title_field": "Site Config", "field_schemas": { "hero": "hero", "footer": "footer" } }
+	},
+	"objectSchemas": {
+		"publication": { "title": "string", "authors": "string", "publisherName": "string", "year": "string", "link": "string" },
+		"person": { "name": "string", "designation": "string", "specialRemarks": "string", "img": "image" },
+		"contact": { "office": "string", "lab": "string", "email": "string" },
+		"newsItem": { "title": "string", "link": "string" },
+		"hero": { "headline": "string", "subtext": "string", "ctaText": "string", "ctaLink": "string", "banner": "image" },
+		"footer": { "copyright": "string", "links": "newsItem" }
+	},
+	"pages": [
+		{ "export": "welcomeDoc", "label": "Welcome Document" },
+		{ "export": "mediaGallery", "label": "Media Gallery" },
+		{ "export": "publications", "label": "Publications" },
+		{ "export": "teamGraph", "label": "Team Information" },
+		{ "export": "siteConfig", "label": "Site Configuration" }
+	]
+}

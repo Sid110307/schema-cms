@@ -1,0 +1,11 @@
+[default]
+description = "Allows all schema-cms commands."
+permissions = [
+    "allow-configure",
+    "allow-launch-config",
+    "allow-list-files",
+    "allow-read-file",
+    "allow-save-files",
+    "allow-media-info",
+    "allow-pick-media",
+]

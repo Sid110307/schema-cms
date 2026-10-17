@@ -2,8 +2,9 @@
 .vs/
 .idea/
 .venv/
-
-**/__pycache__/
 .DS_Store
-*.egg-info
-build/
+
+node_modules/
+dist/
+target/
+src-tauri/gen/schemas/
