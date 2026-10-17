@@ -87,6 +87,8 @@ tauri::Builder::default()
     .plugin(tauri_plugin_schema_cms::init())
 ```
 
+If your git config rewrites GitHub URLs to SSH, add `[net] git-fetch-with-cli = true` to `.cargo/config.toml`.
+
 In `tauri.conf.json`, enable the asset protocol (`app.security.assetProtocol.enable: true`) and set `dragDropEnabled: false` on the window.
 In the capability file, grant `core:window:allow-destroy`, `core:window:allow-set-title`, `dialog:default` and `schema-cms:default`.
 
@@ -124,7 +126,13 @@ mount("#root", {
 });
 ```
 
-The package ships TypeScript source. Add `optimizeDeps: { exclude: ["schema-cms"] }` to the consuming app's Vite config.
+The package ships TypeScript source. In the consuming app's Vite config, pre-bundle its dependencies so dev mode resolves them:
+
+```ts
+optimizeDeps: {
+	include: ["react-dom/client", "schema-cms > acorn", "schema-cms > @tauri-apps/api/core", "schema-cms > @tauri-apps/api/window"],
+},
+```
 
 ### Custom editors
 
