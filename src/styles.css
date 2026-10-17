@@ -482,13 +482,10 @@ select:focus {
 	color: var(--side-strong);
 }
 
-.dirty-dot {
-	display: inline-block;
-	width: 7px;
-	height: 7px;
-	border-radius: 50%;
-	background: var(--warning);
+.dirty {
+	display: inline-flex;
 	flex: none;
+	color: var(--warning);
 }
 
 .sidebar-scrim {
@@ -540,18 +537,10 @@ select:focus {
 	margin: 0 2px;
 }
 
-.badge {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	padding: 3px 8px;
-	border-radius: var(--radius-sm);
-	background: color-mix(in srgb, var(--warning) 14%, transparent);
+.unsaved {
 	color: var(--warning);
-	font-size: 11px;
+	font-size: 12px;
 	font-weight: 600;
-	letter-spacing: 0.04em;
-	text-transform: uppercase;
 	white-space: nowrap;
 }
 
@@ -595,8 +584,10 @@ select:focus {
 	text-overflow: ellipsis;
 }
 
-.footer-status .dirty-dot {
-	margin-right: 4px;
+.footer-status > span {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
 }
 
 .saved-status {

@@ -349,7 +349,11 @@ export function App({ options }: { options: CmsOptions }) {
 									>
 										<Icon name={p.icon} size={16} />
 										<span className="page-label">{p.label}</span>
-										{store.isDirty(p.ref) && <span className="dirty-dot" title="Unsaved changes" />}
+										{store.isDirty(p.ref) && (
+											<span className="dirty" title="Unsaved changes">
+												<Icon name="edit" size={14} />
+											</span>
+										)}
 									</button>
 								))}
 						</div>
@@ -386,11 +390,7 @@ export function App({ options }: { options: CmsOptions }) {
 							</div>
 						)}
 					</div>
-					{current && store.isDirty(current) && (
-						<span className="badge">
-							<span className="dirty-dot" /> Unsaved
-						</span>
-					)}
+					{current && store.isDirty(current) && <span className="unsaved">Unsaved</span>}
 				</header>
 
 				<div className={`content ${busy ? "is-busy" : ""}`} inert={busy ? true : undefined}>
@@ -419,7 +419,10 @@ export function App({ options }: { options: CmsOptions }) {
 							<span>{progress?.label ?? busy}</span>
 						) : dirtyCount ? (
 							<span>
-								<span className="dirty-dot" /> {dirtyCount} unsaved change{dirtyCount === 1 ? "" : "s"}
+								<span className="dirty">
+									<Icon name="edit" size={14} />
+								</span>{" "}
+								{dirtyCount} unsaved change{dirtyCount === 1 ? "" : "s"}
 							</span>
 						) : (
 							<span className="muted saved-status">
